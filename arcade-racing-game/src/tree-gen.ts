@@ -86,12 +86,12 @@ function createTrees(scene, roadMap) {
                 trunk.geometry.parameters.height + 0.5 + (j % 5) * 0.25,
                 (Math.floor(j / 3) - 2) * 0.3
               );
-              //tree.add(blob);
+              //wtree.add(blob);
             }
           }
   
           tree.position.set(tx, 0, tz);
-          tree.scale.set(2, 2, 2);
+          tree.scale.set(4, 4, 4);
           treeGroup.add(tree);
         }
       }

@@ -2,10 +2,14 @@
 
 import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
-import { createTestCar } from './car-gen';
+import { createTestCar, createDefCar } from './car-gen';
 import { createTrees } from './tree-gen';
 import { createHouse, createParkingLot, createModernHighrise, createClassicHouse } from './house-get';
 import addMapBorders from './mapBordert';
+
+let alertLevel = 1;
+const maxAlertLevel = 5;
+
 
 let scene, camera, renderer, clock, vehicle;
 let physicsWorld;
@@ -13,9 +17,169 @@ let carBody, carMesh;
 let tmpTrans;
 const carColor = new THREE.Color().setHSL(Math.random(), 0.6, 0.5);
 
+let policeCars = []
+
+
+let gameOver = false;
+let survivalTime = 0;
+let survivalTimerInterval
+
+const arrestMessage = document.createElement('div');
+arrestMessage.style.position = 'absolute';
+arrestMessage.style.top = '50%';
+arrestMessage.style.left = '50%';
+arrestMessage.style.transform = 'translate(-50%, -50%)';
+arrestMessage.style.padding = '20px 40px';
+arrestMessage.style.fontSize = '32px';
+arrestMessage.style.fontFamily = 'Orbitron, monospace';
+arrestMessage.style.background = 'rgba(0,0,0,0.7)';
+arrestMessage.style.color = 'white';
+arrestMessage.style.borderRadius = '15px';
+arrestMessage.style.display = 'none';
+arrestMessage.innerText = 'Busted!';
+document.body.appendChild(arrestMessage);
+
+function checkPlayerArrested() {
+  const playerPos = carMesh.position;
+
+  for (let car of policeCars) {
+    const policePos = car.mesh.position;
+    const distance = playerPos.distanceTo(policePos);
+    if (distance < 4) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const keysPressed = { forward: false, backward: false, left: false, right: false, camToggle: false };
 let useFollowCamera = true;
 let taillights = [];
+
+function explodePoliceCar(car) {
+  const { mesh, body, vehicle } = car;
+
+  // Визуальный взрыв — создаём яркий вспышечный шар
+  const explosion = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xff4400, emissive: 0xff0000 })
+  );
+  explosion.position.copy(mesh.position);
+  scene.add(explosion);
+
+  // Анимация исчезновения взрыва
+  let scale = 1;
+  const explosionInterval = setInterval(() => {
+    scale += 0.3;
+    explosion.scale.set(scale, scale, scale);
+    explosion.material.opacity = 1 - scale / 5;
+    if (scale >= 5) {
+      clearInterval(explosionInterval);
+      scene.remove(explosion);
+    }
+  }, 30);
+
+  // Удаление из Ammo
+  physicsWorld.removeRigidBody(body);
+  physicsWorld.removeAction(vehicle);
+
+  // Удаление из сцены
+  scene.remove(mesh);
+
+  // Удаление из массива
+  const index = policeCars.indexOf(car);
+  if (index !== -1) policeCars.splice(index, 1);
+}
+
+function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes) {
+  const tuning = new Ammo.btVehicleTuning();
+  const carColor = new THREE.Color(0x2233ff);
+  const taillights = [];
+  const mesh = createDefCar(carColor, taillights);
+  mesh.position.set(Math.random() * 100 - 50, 1, Math.random() * 100 - 50);
+  scene.add(mesh);
+
+  const chassisShape = new Ammo.btBoxShape(new Ammo.btVector3(1, 0.3, 2));
+  const transform = new Ammo.btTransform();
+  transform.setIdentity();
+  transform.setOrigin(new Ammo.btVector3(mesh.position.x, mesh.position.y, mesh.position.z));
+  const mass = 600;
+  const inertia = new Ammo.btVector3(0, 0, 0);
+  chassisShape.calculateLocalInertia(mass, inertia);
+  const motionState = new Ammo.btDefaultMotionState(transform);
+  const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, chassisShape, inertia);
+  const body = new Ammo.btRigidBody(rbInfo);
+  body.setFriction(0.8);
+  body.setDamping(0.1, 0.1);
+  body.setRestitution(0.1);
+  physicsWorld.addRigidBody(body);
+
+  const rayCaster = new Ammo.btDefaultVehicleRaycaster(physicsWorld);
+  const vehicle = new Ammo.btRaycastVehicle(tuning, body, rayCaster);
+  vehicle.setCoordinateSystem(0, 1, 2);
+  physicsWorld.addAction(vehicle);
+
+  const wheelRadius = 0.4;
+  const wheelWidth = 0.3;
+  const wheelHalfTrack = 0.9;
+  const wheelAxisHeight = 0.2;
+  const wheelBase = 1.5;
+
+  function addWheel(isFront, pos) {
+    const wheelInfo = vehicle.addWheel(
+      pos,
+      new Ammo.btVector3(0, -1, 0),
+      new Ammo.btVector3(-1, 0, 0),
+      0.4,
+      wheelRadius,
+      tuning,
+      isFront
+    );
+    wheelInfo.set_m_suspensionStiffness(30);
+    wheelInfo.set_m_wheelsDampingRelaxation(4.3);
+    wheelInfo.set_m_wheelsDampingCompression(4.4);
+    wheelInfo.set_m_frictionSlip(1200);
+    wheelInfo.set_m_rollInfluence(0.05);
+    wheelInfo.set_m_maxSuspensionForce(10000);
+
+  }
+  addWheel(true, new Ammo.btVector3(-wheelHalfTrack, wheelAxisHeight, wheelBase));
+  addWheel(true, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, wheelBase));
+  addWheel(false, new Ammo.btVector3(-wheelHalfTrack, wheelAxisHeight, -wheelBase));
+  addWheel(false, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, -wheelBase));
+
+  const road = roadMeshes[Math.floor(Math.random() * roadMeshes.length)];
+
+  // Получаем позицию дороги
+  const roadPos = new THREE.Vector3();
+  if (road) {
+    road.getWorldPosition(roadPos);
+  }
+
+  // Добавим небольшое случайное смещение (в пределах тайла)
+  const tileSize = 10;
+  const offsetX = (Math.random() - 0.5) * tileSize * 0.5;
+  const offsetZ = (Math.random() - 0.5) * tileSize * 0.5;
+
+  const spawnX = roadPos.x + offsetX;
+  const spawnZ = roadPos.z + offsetZ;
+
+  mesh.position.set(spawnX, 1, spawnZ);
+
+  policeCars.push({
+    mesh, body, taillights, vehicle,
+    smoothedDir: null,
+    steeringSmoothed: 0,
+    maxSpeed: 160 + Math.random() * 20, // км/ч
+    enginePower: 2300 + Math.random() * 1000,
+    behaviorOffset: new THREE.Vector3(
+      (Math.random() - 0.5) * 10,
+      0,
+      (Math.random() - 0.5) * 10
+    )
+  });
+}
+
 
 
 // ----- Создадим HUD -----
@@ -70,7 +234,7 @@ function applyOffroadPenaltyByTiles(carBody, roadMeshes) {
   console.log(isOnRoad)
   if (!isOnRoad) {
     const velocity = carBody.getLinearVelocity();
-    const slowdown = 0.99;
+    const slowdown = 1;
     carBody.setLinearVelocity(new Ammo.btVector3(
       velocity.x() * slowdown,
       velocity.y(),
@@ -82,28 +246,26 @@ function applyOffroadPenaltyByTiles(carBody, roadMeshes) {
 // Пример формата дорожного уровня на основе строкового массива
 const roadMap = [
   "                                          ",
-  " |---                --||--           ---|",
-  " |---WWWWWWWWWWWWWWWWW||||WWWWWWWWWWWW---|",
-  " |---                -:  :-           ---|",
-  "  w                   :  :              w ",
-  "  w                   :  :              w ",
-  "  w                   :  :              w ",
-  "  w                   :  :              w ",
-  "  w                   :||:              w ",
-  "  w                   :  :              w ",
-  "  w                   :  :              w ",
-  "  w                   :  :              w ",
-  "  w                   :  :              w ",
-  "  w                   :  :              w ",
-  "  w                   ||||              w ",
-  "  WWWWWWWWWWWWWWWWWWWW||||WWWWWWWWWWWWWWWW",
-  "                      ||||                ",
-  "                        ||                ",
-  "                        ||                ",
-  "                        --                ",
-  "                        --                ",
-  " WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
-  "...........................................",
+  " |wWWWWWWWWWWWWWWWWWWWWwWWWWWWWWWWWWWWWWWW",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  WWWWWWWWWWWWWWWWWWWWWwWWWWWWWWWWWWWWWWw ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  w                    w                w ",
+  "  wWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+  "..........................................",
 ];
 
 const buildingsMap = [
@@ -127,8 +289,9 @@ const buildingsMap = [
   "  w                     ||                ",
   "  w                     ||                ",
   "  w                     --                ",
-  "  w                     --                ",
   "   WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+  "   WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+  "  w                     --     U    U     ",
 ];
 
 function generateBuildingsFromMap(map, scene) {
@@ -189,7 +352,7 @@ function generateRoadFromMap(map, scene) {
   const markingLineThinV = new THREE.BoxGeometry(tileSize * 0.02, 0.01, tileSize * 0.9);
 
   // Невидимая платформа под уровнем земли — защита от проваливания
-  const fallbackShape = new Ammo.btBoxShape(new Ammo.btVector3(200, 5, 200));
+  const fallbackShape = new Ammo.btBoxShape(new Ammo.btVector3(200, 0, 200));
   const fallbackTransform = new Ammo.btTransform();
   fallbackTransform.setIdentity();
   fallbackTransform.setOrigin(new Ammo.btVector3(0, -0.5, 0));
@@ -214,7 +377,7 @@ function generateRoadFromMap(map, scene) {
       if (isVertical || isHorizontal) {
         if (char === 'W') {
           // Четырёхполосная горизонтальная
-          const wideRoad = new THREE.Mesh(new THREE.BoxGeometry(tileSize, 0.1, tileSize * 2), roadMaterial);
+          const wideRoad = new THREE.Mesh(new THREE.BoxGeometry(tileSize, 0.1, tileSize ), roadMaterial);
           wideRoad.position.set(posX, 0.05, posZ);
           scene.add(wideRoad);
           roadMeshes.push(wideRoad);
@@ -319,7 +482,7 @@ function generateRoadFromMap(map, scene) {
       // Add markings based on the character
       if (road) {
         // Add edge lines to all roads
-roadMeshes
+
       }
     }
   }
@@ -327,6 +490,13 @@ roadMeshes
 }
 
 function init() {
+  survivalTimerInterval = setInterval(() => {
+    if (!gameOver) {
+      survivalTime++;
+    }
+  }, 1000);
+
+  const alertTimerSeconds = 20;
   // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xffcc99);
@@ -349,6 +519,25 @@ function init() {
   physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionCfg);
   physicsWorld.setGravity(new Ammo.btVector3(0, -9.8, 0));
   addMapBorders(scene, physicsWorld);
+
+
+  setInterval(() => {
+    if (!gameOver && alertLevel < maxAlertLevel) {
+      alertLevel++;
+      console.log(`ALERT LEVEL UP! Level = ${alertLevel}`);
+
+      for (let car of policeCars) {
+        car.maxSpeed += 4 * alertLevel;
+        car.enginePower += 150 * alertLevel;
+      }
+    }
+  }, alertTimerSeconds * 1000);
+
+  setInterval(() => {
+    for (let i = 0; i < alertLevel * 4; i++) {
+      spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+    }
+  }, 10 * 1000);
 
   tmpTrans = new Ammo.btTransform();
 
@@ -420,6 +609,7 @@ function init() {
   carMesh.position.set(0, 2, -55);
   scene.add(carMesh);
 
+
   // Car physics
   const chassisShape = new Ammo.btBoxShape(new Ammo.btVector3(1, 0.3, 2));
   const chassisTransform = new Ammo.btTransform();
@@ -446,6 +636,10 @@ function init() {
   vehicle = new Ammo.btRaycastVehicle(tuning, carBody, rayCaster);
   vehicle.setCoordinateSystem(0, 1, 2);
   physicsWorld.addAction(vehicle);
+
+  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
 
   // Wheels
   const wheelRadius = 0.4;
@@ -504,6 +698,110 @@ function init() {
   generateBuildingsFromMap(buildingsMap, scene);
 }
 
+function updatePoliceAI(delta) {
+  for (let car of policeCars) {
+    const { mesh, vehicle, body } = car;
+
+    const playerPos = carMesh.position.clone();
+    const policePos = mesh.position.clone();
+
+    // Направление к игроку с индивидуальным смещением
+    const toPlayer = new THREE.Vector3().subVectors(playerPos, policePos);
+    toPlayer.add(car.behaviorOffset); // индивидуальное отклонение
+    const distance = toPlayer.length();
+
+    if (distance > 300) continue;
+
+    // === Избежание других ===
+    const avoidance = new THREE.Vector3();
+    for (let other of policeCars) {
+      if (other === car) continue;
+      const diff = new THREE.Vector3().subVectors(policePos, other.mesh.position);
+      const dist = diff.length();
+      if (dist < 20 && dist > 0.01) {
+        const strength = 1.5 / dist; // усилено
+        avoidance.add(diff.normalize().multiplyScalar(strength));
+      }
+    }
+
+    const desiredDir = toPlayer.add(avoidance.multiplyScalar(2.5)).normalize();
+
+    // Сглаживаем направление
+    if (!car.smoothedDir) car.smoothedDir = desiredDir.clone();
+    else car.smoothedDir.lerp(desiredDir, 0.1);
+
+    // Направление вперёд
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(mesh.quaternion);
+    forward.y = 0;
+    forward.normalize();
+
+    const angle = forward.angleTo(car.smoothedDir);
+    const cross = forward.clone().cross(car.smoothedDir);
+    const steerSign = cross.y < 0 ? 1 : -1;
+
+    let steering = 0;
+    if (angle > 0.05) {
+      steering = steerSign * Math.min(angle, 0.4);
+    }
+
+    // Получаем текущую скорость
+    const vel = body.getLinearVelocity();
+    const speed = vel.length() * 3.6; // в км/ч
+
+    const maxSpeed = car.maxSpeed;
+    const engineForce = speed < maxSpeed ? car.enginePower : 0;
+    const brakingForce = speed > maxSpeed + 10 ? 200 : 0;
+
+    // Steering — сглаживание
+    car.steeringSmoothed += (steering - car.steeringSmoothed) * 0.2;
+
+    // Применяем
+    vehicle.applyEngineForce(engineForce, 2);
+    vehicle.applyEngineForce(engineForce, 3);
+    vehicle.setBrake(brakingForce, 2);
+    vehicle.setBrake(brakingForce, 3);
+    vehicle.setSteeringValue(car.steeringSmoothed, 0);
+    vehicle.setSteeringValue(car.steeringSmoothed, 1);
+
+    // Синхронизация меша
+    const tm = vehicle.getRigidBody().getMotionState();
+    if (tm) {
+      tm.getWorldTransform(tmpTrans);
+      const origin = tmpTrans.getOrigin();
+      const rotation = tmpTrans.getRotation();
+      mesh.position.set(origin.x(), origin.y(), origin.z());
+
+      const flip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+      const physicsQuat = new THREE.Quaternion(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+      mesh.quaternion.copy(physicsQuat.multiply(flip));
+    }
+
+    const carPos = mesh.position.clone();
+    let collided = false;
+
+    // С игроком
+    if (carPos.distanceTo(carMesh.position) < 4) {
+      collided = true;
+    }
+
+    // С другими полицейскими
+    for (let other of policeCars) {
+      if (other === car) continue;
+      const otherPos = other.mesh.position.clone();
+      if (carPos.distanceTo(otherPos) < 4) {
+        setTimeout(() => {
+          explodePoliceCar(car);
+          explodePoliceCar(other);
+        }, 222);
+        break;
+      }
+    }
+  }
+}
+
+
+
+
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
@@ -551,16 +849,22 @@ function animate() {
   vehicle.setBrake(0, 2);
   vehicle.setBrake(0, 3);
 
-  if (keysPressed.forward) {
-    engineForce = 2000;
-    brakingForce = 0;
-  }
-  if (keysPressed.backward) {
+  if (!gameOver) {
+    if (keysPressed.forward) {
+      engineForce = 2800;
+      brakingForce = 0;
+    }
+    if (keysPressed.backward) {
+      engineForce = 0;
+      brakingForce = 700;
+    }
+    if (keysPressed.left) steering = 0.3;
+    if (keysPressed.right) steering = -0.3;
+  } else {
     engineForce = 0;
-    brakingForce = 700;
+    brakingForce = 1000;
   }
-  if (keysPressed.left) steering = 0.3;
-  if (keysPressed.right) steering = -0.3;
+
 
   vehicle.applyEngineForce(engineForce, 2);
   vehicle.applyEngineForce(engineForce, 3);
@@ -568,6 +872,7 @@ function animate() {
   vehicle.setBrake(brakingForce, 3);
   vehicle.setSteeringValue(steering, 0);
   vehicle.setSteeringValue(steering, 1);
+
 
   const tm = vehicle.getRigidBody().getMotionState();
   if (tm) {
@@ -582,9 +887,11 @@ function animate() {
     carMesh.quaternion.copy(physicsQuat.multiply(flip));
   }
 
+  const playerPos = carMesh.position;
+
   // Камера
   if (useFollowCamera) {
-    const offset = new THREE.Vector3(0, 15, 20).applyQuaternion(carMesh.quaternion);
+    const offset = new THREE.Vector3(0, 12, 15).applyQuaternion(carMesh.quaternion);
     const target = carMesh.position.clone().add(offset);
     camera.position.lerp(target, 0.1);
     camera.lookAt(carMesh.position);
@@ -593,7 +900,7 @@ function animate() {
     camera.position.lerp(targetPosition, 0.05);
     camera.lookAt(carMesh.position.clone());
 
-    
+
   }
 
   // Обновляем стоп-сигналы
@@ -601,13 +908,37 @@ function animate() {
     light.material.emissive.setHex(keysPressed.backward ? 0xff0000 : 0x000000);
   }
 
+
+  if (policeCars.length < 3) {
+    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+  }
   // HUD
   const linVel = carBody.getLinearVelocity();
   const speed = linVel.length() * 3.6; // m/s в km/h
   const gear = engineForce < 0 ? 'R' : 'D';
   hud.innerHTML = `Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h Gear: ${gear}`;
+  hud.innerHTML = `
+  Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h Gear: ${gear}<br>
+  Survived: ${survivalTime} s<br>
+  Alert Level: ${'🔥'.repeat(alertLevel)}
+`;
+  updatePoliceAI(delta);
+  if (checkPlayerArrested()) {
+    gameOver = true;
+    arrestMessage.style.display = 'block';
 
+    // Отключим движение
+    vehicle.applyEngineForce(0, 2);
+    vehicle.applyEngineForce(0, 3);
+    vehicle.setBrake(1000, 2);
+    vehicle.setBrake(1000, 3);
+  }
   renderer.render(scene, camera);
+
+
+
 }
 
 init();
