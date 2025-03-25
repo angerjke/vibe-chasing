@@ -74,7 +74,7 @@ function createTrees(scene, roadMap) {
   
             const trunk = new THREE.Mesh(trunkGeos[type], trunkMat);
             trunk.position.y = trunk.geometry.parameters.height / 2;
-            tree.add(trunk);
+            //tree.add(trunk);
   
             for (let j = 0; j < 15; j++) {
               const blob = new THREE.Mesh(
@@ -86,7 +86,7 @@ function createTrees(scene, roadMap) {
                 trunk.geometry.parameters.height + 0.5 + (j % 5) * 0.25,
                 (Math.floor(j / 3) - 2) * 0.3
               );
-              tree.add(blob);
+              //tree.add(blob);
             }
           }
   

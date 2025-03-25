@@ -2,9 +2,10 @@
 
 import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
-import { createDefCar, createTestCar } from './car-gen';
+import { createTestCar } from './car-gen';
 import { createTrees } from './tree-gen';
-import { createHouse, createVillage } from './house-get';
+import { createHouse, createParkingLot, createModernHighrise, createClassicHouse } from './house-get';
+import addMapBorders from './mapBordert';
 
 let scene, camera, renderer, clock, vehicle;
 let physicsWorld;
@@ -15,6 +16,7 @@ const carColor = new THREE.Color().setHSL(Math.random(), 0.6, 0.5);
 const keysPressed = { forward: false, backward: false, left: false, right: false, camToggle: false };
 let useFollowCamera = true;
 let taillights = [];
+
 
 // ----- Создадим HUD -----
 const hud = document.createElement('div');
@@ -30,38 +32,152 @@ hud.style.fontSize = '18px';
 hud.style.pointerEvents = 'none';
 hud.innerHTML = 'Speed: 0 km/h Gear: D';
 document.body.appendChild(hud);
-;
-const whiteLineMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+let roadMeshes = []
 
+function isCarOnRoad(carPos, roadMeshes) {
+  for (const tile of roadMeshes) {
+    const halfX = tile.sizeX / 2;
+    const halfZ = tile.sizeZ / 2;
+    if (
+      carPos.x > tile.x - halfX && carPos.x < tile.x + halfX &&
+      carPos.z > tile.z - halfZ && carPos.z < tile.z + halfZ
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
+function applyOffroadPenaltyByTiles(carBody, roadMeshes) {
+  const transform = new Ammo.btTransform();
+  carBody.getMotionState().getWorldTransform(transform);
+  const origin = transform.getOrigin();
+  const carPos = new THREE.Vector3(origin.x(), origin.y(), origin.z());
+
+  let isOnRoad = false;
+  for (const mesh of roadMeshes) {
+    const box = new THREE.Box3().setFromObject(mesh);
+    const flatCarPos = carPos.clone();
+    flatCarPos.y = (box.min.y + box.max.y) / 2; // flatten to match road height
+    if (box.containsPoint(flatCarPos)) {
+      isOnRoad = true;
+      break;
+    }
+  }
+
+  console.log(isOnRoad)
+
+  console.log(isOnRoad)
+  if (!isOnRoad) {
+    const velocity = carBody.getLinearVelocity();
+    const slowdown = 0.99;
+    carBody.setLinearVelocity(new Ammo.btVector3(
+      velocity.x() * slowdown,
+      velocity.y(),
+      velocity.z() * slowdown
+    ));
+  }
+}
 
 // Пример формата дорожного уровня на основе строкового массива
 const roadMap = [
-  "   w   :                                         ",
-  "   |   |      |         :                        ",
-  "WW-+-WW|WWWWWW|WWWWWWWWW+WWWWWWWWWWWWWWWWWWWWWWWW",
-  "   |   |      |         :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  "   w   :                :                        ",
-  "   w                    :                        ",
-  "   w                    :                        ",
-  
+  "                                          ",
+  " |---                --||--           ---|",
+  " |---WWWWWWWWWWWWWWWWW||||WWWWWWWWWWWW---|",
+  " |---                -:  :-           ---|",
+  "  w                   :  :              w ",
+  "  w                   :  :              w ",
+  "  w                   :  :              w ",
+  "  w                   :  :              w ",
+  "  w                   :||:              w ",
+  "  w                   :  :              w ",
+  "  w                   :  :              w ",
+  "  w                   :  :              w ",
+  "  w                   :  :              w ",
+  "  w                   :  :              w ",
+  "  w                   ||||              w ",
+  "  WWWWWWWWWWWWWWWWWWWW||||WWWWWWWWWWWWWWWW",
+  "                      ||||                ",
+  "                        ||                ",
+  "                        ||                ",
+  "                        --                ",
+  "                        --                ",
+  " WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+  "...........................................",
 ];
 
+const buildingsMap = [
+  "         A     A             A    A    A  ",
+  " |---                --||--               ",
+  " |---WWWWWWWWWWWWWWWWW||||WWWWWWWWWW  WWW ",
+  " |---                -:  :-              -",
+  "  w     A             :  :    A   A    A  ",
+  "  w                   :  :                ",
+  "  w                   :  :                ",
+  "  w                   :  :    U           ",
+  "  w                   :||:                ",
+  "  w                   :  :                ",
+  "  w                   :  :                ",
+  "  w                   :  :    U           ",
+  "  w                   :  :                ",
+  "  w                   :  :         U      ",
+  "  w                   ||||                ",
+  "  WWWWWWWWWWWWWWWWWWWWW||WWWWWWWWWWWWWWWWW",
+  "  w                   ||||                ",
+  "  w                     ||                ",
+  "  w                     ||                ",
+  "  w                     --                ",
+  "  w                     --                ",
+  "   WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+];
+
+function generateBuildingsFromMap(map, scene) {
+  if (!scene) return;
+  const tileSize = 10;
+
+  for (let z = 0; z < map.length; z++) {
+    const row = map[z];
+    for (let x = 0; x < row.length; x++) {
+      const char = row[x];
+      const posX = (x - row.length / 2) * tileSize;
+      const posZ = (z - map.length / 2) * tileSize;
+
+      let building = null;
+
+      switch (char) {
+        case 'H':
+          building = createHouse();
+          break;
+        case 'A':
+          building = createClassicHouse();
+          break;
+        case 'U':
+          building = createModernHighrise();
+          break;
+      }
+
+      if (building) {
+        building.position.set(posX, 0, posZ);
+        scene.add(building);
+
+        const width = 20;
+        const height = 20;
+        const depth = 20
+        const shape = new Ammo.btBoxShape(new Ammo.btVector3(width / 2, height / 2, depth / 2));
+        const transform = new Ammo.btTransform();
+        transform.setIdentity();
+        transform.setOrigin(new Ammo.btVector3(posX, height / 2, posZ));
+        const motionState = new Ammo.btDefaultMotionState(transform);
+        const rbInfo = new Ammo.btRigidBodyConstructionInfo(0, motionState, shape, new Ammo.btVector3(0, 0, 0));
+        const body = new Ammo.btRigidBody(rbInfo);
+        physicsWorld.addRigidBody(body);
+      }
+    }
+  }
+}
+
 function generateRoadFromMap(map, scene) {
+  const roadMeshes = [];
   const tileSize = 10;
 
   const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
@@ -95,12 +211,13 @@ function generateRoadFromMap(map, scene) {
       const isHorizontal = char === '-' || char === '=' || char === '.' || char === 'W';
 
       // Простая дорога и широкие тайлы
-      if (isVertical || isHorizontal || char === '+') {
+      if (isVertical || isHorizontal) {
         if (char === 'W') {
           // Четырёхполосная горизонтальная
           const wideRoad = new THREE.Mesh(new THREE.BoxGeometry(tileSize, 0.1, tileSize * 2), roadMaterial);
           wideRoad.position.set(posX, 0.05, posZ);
           scene.add(wideRoad);
+          roadMeshes.push(wideRoad);
 
           const whiteSpacing = tileSize * 0.475;
           const yellowSpacing = 0.02 * tileSize;
@@ -124,7 +241,7 @@ function generateRoadFromMap(map, scene) {
           const wideRoad = new THREE.Mesh(new THREE.BoxGeometry(tileSize * 2, 0.1, tileSize), roadMaterial);
           wideRoad.position.set(posX, 0.05, posZ);
           scene.add(wideRoad);
-
+          roadMeshes.push(wideRoad);
           const whiteSpacing = tileSize * 0.375;
           const yellowSpacing = 0.02 * tileSize;
 
@@ -146,6 +263,7 @@ function generateRoadFromMap(map, scene) {
           road = new THREE.Mesh(tileGeo, roadMaterial);
           road.position.set(posX, 0.05, posZ);
           scene.add(road);
+          roadMeshes.push(road);
         }
       }
 
@@ -184,6 +302,13 @@ function generateRoadFromMap(map, scene) {
         scene.add(marking);
       }
 
+      if (char === 'P') {
+        road = new THREE.Mesh(tileGeo, roadMaterial);
+        road.position.set(posX, 0.05, posZ);
+        road.add(createParkingLot(posX, posZ));
+        scene.add(road);
+      }
+
       // Разметка прерывистая вертикальная (:)
       if (char === ':') {
         const marking = new THREE.Mesh(markingLineThinV, markingWhite);
@@ -194,15 +319,12 @@ function generateRoadFromMap(map, scene) {
       // Add markings based on the character
       if (road) {
         // Add edge lines to all roads
-
+roadMeshes
       }
     }
   }
+  return roadMeshes;
 }
-
-
-
-
 
 function init() {
   // Scene
@@ -226,11 +348,11 @@ function init() {
   let solver = new Ammo.btSequentialImpulseConstraintSolver();
   physicsWorld = new Ammo.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionCfg);
   physicsWorld.setGravity(new Ammo.btVector3(0, -9.8, 0));
+  addMapBorders(scene, physicsWorld);
 
   tmpTrans = new Ammo.btTransform();
 
   if (scene) createTrees(scene, roadMap);
-  if (scene) createVillage(scene);
   clock = new THREE.Clock();
 
   // Lights
@@ -278,12 +400,12 @@ function init() {
     `
   });
 
-  const ground = new THREE.Mesh(new THREE.BoxGeometry(400, 1, 400), groundMat);
+  const ground = new THREE.Mesh(new THREE.BoxGeometry(450, 1, 450), groundMat);
   ground.position.set(0, -0.5, 0);
   ground.receiveShadow = true;
   scene.add(ground);
 
-  const groundShape = new Ammo.btBoxShape(new Ammo.btVector3(100, 0.5, 100));
+  const groundShape = new Ammo.btBoxShape(new Ammo.btVector3(450, 0.5, 405));
   const groundTransform = new Ammo.btTransform();
   groundTransform.setIdentity();
   groundTransform.setOrigin(new Ammo.btVector3(0, -0.5, 0));
@@ -378,13 +500,15 @@ function init() {
     }
   });
 
-  generateRoadFromMap(roadMap, scene);
+  roadMeshes = generateRoadFromMap(roadMap, scene);
+  generateBuildingsFromMap(buildingsMap, scene);
 }
 
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
   physicsWorld.stepSimulation(delta, 10);
+  applyOffroadPenaltyByTiles(carBody, roadMeshes);
 
   // Improved idle stabilization
   if (!keysPressed.forward && !keysPressed.backward) {
@@ -465,8 +589,11 @@ function animate() {
     camera.position.lerp(target, 0.1);
     camera.lookAt(carMesh.position);
   } else {
-    camera.position.set(0, 60, 0);
-    camera.lookAt(carMesh.position);
+    const targetPosition = carMesh.position.clone().add(new THREE.Vector3(0, 40, -40));
+    camera.position.lerp(targetPosition, 0.05);
+    camera.lookAt(carMesh.position.clone());
+
+    
   }
 
   // Обновляем стоп-сигналы

@@ -76,6 +76,7 @@ function createHouse(x, z) {
   
     house.position.set(x, 0, z);
     house.scale.set(2,2,2);
+    
     return house;
   }
 
@@ -145,18 +146,18 @@ function createHouse(x, z) {
   }
 
   function createVillage(scene) {
-    const house1 = createHouse(20, 20);
-    const house2 = createHouse(-20, 30);
-    const house3 = createClassicHouse(-30, -25);
-    const house4 = createClassicHouse(0, -20);
+//     const house1 = createHouse(20, 20);
+//     const house2 = createHouse(-20, 30);
+//     const house3 = createClassicHouse(-30, -25);
+//     const house4 = createClassicHouse(0, -20);
 
-  const apt1 = createUrbanApartment(0, 50);
-  scene.add(apt1);
+//   const apt1 = createUrbanApartment(0, 50);
+//   scene.add(apt1);
   
-    scene.add(house1);
-    scene.add(house2);
-    scene.add(house3);
-    scene.add(house4);
+//     scene.add(house1);
+//     scene.add(house2);
+//     scene.add(house3);
+//     scene.add(house4);
   }
 
   function createUrbanApartment(x, z) {
@@ -197,5 +198,101 @@ function createHouse(x, z) {
     building.position.set(x, 0, z);
     return building;
   }
+
+  function createModernHighrise(x, z) {
+    const building = new THREE.Group();
   
-export { createHouse, createVillage };
+    const colorWall = new THREE.MeshStandardMaterial({ color: 0xffbb77 });
+    const colorGlass = new THREE.MeshStandardMaterial({ color: 0x223344, emissive: 0x99ccff, emissiveIntensity: 1 });
+  
+    const width = 12;
+    const height = 25;
+    const depth = 12;
+    const floorCount = 8;
+  
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(width, height, depth),
+      colorWall
+    );
+    body.position.y = height / 2;
+    building.add(body);
+  
+    const windowGeoH = new THREE.PlaneGeometry(1.2, 1.2);
+  windowGeoH.translate(0, 0, 0.06);
+  
+    for (let f = 0; f < floorCount; f++) {
+      const y = 2 + f * 2.5;
+      for (let i = -2; i <= 2; i++) {
+        const offset = i * 2.5;
+  
+        // Front
+        const winFront = new THREE.Mesh(windowGeoH, colorGlass);
+        winFront.position.set(offset, y, -depth / 2 - 0.01);
+        winFront.rotation.y = 0;
+        building.add(winFront);
+  
+        // Back
+        const winBack = new THREE.Mesh(windowGeoH, colorGlass);
+        winBack.position.set(offset, y, depth / 2 + 0.01);
+        winBack.rotation.y = Math.PI;
+        building.add(winBack);
+  
+        // Left
+        const winLeft = new THREE.Mesh(windowGeoH, colorGlass);
+        winLeft.position.set(-width / 2 - 0.01, y, offset);
+        winLeft.rotation.y = -Math.PI / 2;
+        building.add(winLeft);
+  
+        // Right
+        const winRight = new THREE.Mesh(windowGeoH, colorGlass);
+        winRight.position.set(width / 2 + 0.01, y, offset);
+        winRight.rotation.y = Math.PI / 2;
+        building.add(winRight);
+      }
+    }
+  
+    building.position.set(x, 0, z);
+    building.rotation.set(0, Math.PI/2, 0);
+    return building;
+  }
+
+  function createParkingLot(x, z, spots = 6) {
+    const width = spots * 4;
+    const depth = 10;
+  
+    // Asphalt base
+    const asphalt = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, depth),
+      new THREE.MeshStandardMaterial({ color: 0x444444 })
+    );
+    asphalt.rotation.x = -Math.PI / 2;
+    asphalt.position.set(x, 0.01, z);
+  
+    // Parking lines
+    const markingsGeo = new THREE.BufferGeometry();
+    const markingMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+    const linePoints = [];
+  
+    // Vertical lines
+    for (let i = 0; i <= spots; i++) {
+      const px = -width / 2 + i * 4;
+      linePoints.push(new THREE.Vector3(px, 0.02, -depth / 2));
+      linePoints.push(new THREE.Vector3(px, 0.02, depth / 2));
+    }
+  
+    // One horizontal line
+    linePoints.push(new THREE.Vector3(-width / 2, 0.02, 0));
+    linePoints.push(new THREE.Vector3(width / 2, 0.02, 0));
+  
+    markingsGeo.setFromPoints(linePoints);
+    const markings = new THREE.LineSegments(markingsGeo, markingMat);
+  
+    const lot = new THREE.Group();
+    lot.add(asphalt);
+    lot.add(markings);
+    lot.position.set(x, 0, z);
+  
+    return lot;
+  }
+  
+export { createParkingLot, createHouse, createUrbanApartment, createClassicHouse, createVillage, createModernHighrise };
