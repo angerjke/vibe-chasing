@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
 import { createDefCar, createTestCar } from './car-gen';
-
+import { createTrees } from './tree-gen';
+import { createHouse, createVillage } from './house-get';
 
 let scene, camera, renderer, clock, vehicle;
 let physicsWorld;
@@ -29,17 +30,35 @@ hud.style.fontSize = '18px';
 hud.style.pointerEvents = 'none';
 hud.innerHTML = 'Speed: 0 km/h Gear: D';
 document.body.appendChild(hud);
+;
+const whiteLineMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+
 
 // Пример формата дорожного уровня на основе строкового массива
 const roadMap = [
-  "   w   |                       ",
-  "---+---+----------------+------",
-  "   w P |                :      ",
-  "WWW+WWW:WWWWWWWWWWWWWWWW+WWWWWW",
-  "   w   :                :      ",
-  "   w   :                :      ",
-  "   w   :                :      ",
-  "   w   :                :      ",
+  "   w   :                                         ",
+  "   |   |      |         :                        ",
+  "WW-+-WW|WWWWWW|WWWWWWWWW+WWWWWWWWWWWWWWWWWWWWWWWW",
+  "   |   |      |         :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  "   w   :                :                        ",
+  "   w                    :                        ",
+  "   w                    :                        ",
+  
 ];
 
 function generateRoadFromMap(map, scene) {
@@ -53,15 +72,15 @@ function generateRoadFromMap(map, scene) {
   const markingLineThinH = new THREE.BoxGeometry(tileSize * 0.9, 0.01, tileSize * 0.02);
   const markingLineThinV = new THREE.BoxGeometry(tileSize * 0.02, 0.01, tileSize * 0.9);
 
-   // Невидимая платформа под уровнем земли — защита от проваливания
-   const fallbackShape = new Ammo.btBoxShape(new Ammo.btVector3(200, 5, 200));
-   const fallbackTransform = new Ammo.btTransform();
-   fallbackTransform.setIdentity();
-   fallbackTransform.setOrigin(new Ammo.btVector3(0, -0.5, 0));
-   const fallbackMotion = new Ammo.btDefaultMotionState(fallbackTransform);
-   const fallbackRBInfo = new Ammo.btRigidBodyConstructionInfo(0, fallbackMotion, fallbackShape, new Ammo.btVector3(0, 0, 0));
-   const fallbackBody = new Ammo.btRigidBody(fallbackRBInfo);
-   physicsWorld.addRigidBody(fallbackBody);
+  // Невидимая платформа под уровнем земли — защита от проваливания
+  const fallbackShape = new Ammo.btBoxShape(new Ammo.btVector3(200, 5, 200));
+  const fallbackTransform = new Ammo.btTransform();
+  fallbackTransform.setIdentity();
+  fallbackTransform.setOrigin(new Ammo.btVector3(0, -0.5, 0));
+  const fallbackMotion = new Ammo.btDefaultMotionState(fallbackTransform);
+  const fallbackRBInfo = new Ammo.btRigidBodyConstructionInfo(0, fallbackMotion, fallbackShape, new Ammo.btVector3(0, 0, 0));
+  const fallbackBody = new Ammo.btRigidBody(fallbackRBInfo);
+  physicsWorld.addRigidBody(fallbackBody);
 
   for (let z = 0; z < map.length; z++) {
     const row = map[z];
@@ -83,7 +102,7 @@ function generateRoadFromMap(map, scene) {
           wideRoad.position.set(posX, 0.05, posZ);
           scene.add(wideRoad);
 
-          const whiteSpacing = tileSize * 0.375;
+          const whiteSpacing = tileSize * 0.475;
           const yellowSpacing = 0.02 * tileSize;
 
           // Белые линии по краям
@@ -171,31 +190,25 @@ function generateRoadFromMap(map, scene) {
         marking.position.set(posX, 0.11, posZ);
         scene.add(marking);
       }
+
+      // Add markings based on the character
+      if (road) {
+        // Add edge lines to all roads
+
+      }
     }
   }
 }
 
-// Использование (после init):
-// generateRoadFromMap(roadMap, scene);
-
-// Использование (после init):
-// generateRoadFromMap(roadMap, scene);
-
-// Использование (после init):
-// generateRoadFromMap(roadMap, scene);
 
 
-// Использование (после init):
-// generateRoadFromMap(roadMap, scene);
-
-// Использование (после init):
 
 
 function init() {
   // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xffcc99);
-  scene.fog = new THREE.Fog(0xffcc99, 40, 150);
+  scene.fog = new THREE.Fog(0xffcc99, 30, 250);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
   camera.position.set(30, 40, 30);
@@ -216,7 +229,8 @@ function init() {
 
   tmpTrans = new Ammo.btTransform();
 
-
+  if (scene) createTrees(scene, roadMap);
+  if (scene) createVillage(scene);
   clock = new THREE.Clock();
 
   // Lights
@@ -245,18 +259,18 @@ function init() {
     }
 
     void main() {
-      vec2 grid = floor(vUv * 800.0);
+      vec2 grid = floor(vUv * 600.0);
       float h = hash(grid);
 
       vec3 autumn1 = vec3(0.65, 0.45, 0.28);
       vec3 autumn2 = vec3(0.5, 0.35, 0.2);
       vec3 autumn3 = vec3(0.8, 0.65, 0.35);
-      vec3 autumn4 = vec3(0.6, 0.5, 0.25);
+      vec3 autumn4 = vec3(0.6, 0.54, 0.25);
 
       vec3 color;
       if (h < 0.3) color = autumn3; // yellow — 30%
-      else if (h < 0.7) color = autumn1; // orange — 40%
-      else if (h < 0.9) color = autumn4; // brown — 20%
+      else if (h < 0.9) color = autumn1; // orange — 40%
+      else if (h < 0.95) color = autumn4; // brown — 20%
       else color = autumn2; // greenish — 10%
 
       gl_FragColor = vec4(color, 1.0);
@@ -279,7 +293,7 @@ function init() {
   const groundBody = new Ammo.btRigidBody(rbInfo);
   physicsWorld.addRigidBody(groundBody);
 
-  
+
   carMesh = createTestCar(carColor, taillights);
   carMesh.position.set(0, 2, -55);
   scene.add(carMesh);
@@ -297,6 +311,12 @@ function init() {
   const chassisRbInfo = new Ammo.btRigidBodyConstructionInfo(chassisMass, chassisMotion, chassisShape, chassisInertia);
   carBody = new Ammo.btRigidBody(chassisRbInfo);
   carBody.setActivationState(4);
+
+  // Set better friction and damping
+  carBody.setFriction(0.8);
+  carBody.setDamping(0.1, 0.1); // Linear and angular damping
+  carBody.setRestitution(0.1); // Lower bouncing
+
   physicsWorld.addRigidBody(carBody);
 
   const tuning = new Ammo.btVehicleTuning();
@@ -322,11 +342,14 @@ function init() {
       tuning,
       isFront
     );
-    wheelInfo.set_m_suspensionStiffness(20);
-    wheelInfo.set_m_wheelsDampingRelaxation(2.3);
+
+    // Improve wheel physics parameters
+    wheelInfo.set_m_suspensionStiffness(30); // Increased from 20
+    wheelInfo.set_m_wheelsDampingRelaxation(4.3); // Increased from 2.3
     wheelInfo.set_m_wheelsDampingCompression(4.4);
-    wheelInfo.set_m_frictionSlip(1000);
-    wheelInfo.set_m_rollInfluence(0.1);
+    wheelInfo.set_m_frictionSlip(1200); // Increased from 1000
+    wheelInfo.set_m_rollInfluence(0.05); // Reduced from 0.1 for better stability
+    wheelInfo.set_m_maxSuspensionForce(10000); // Add max suspension force
   }
   addWheel(true, new Ammo.btVector3(-wheelHalfTrack, wheelAxisHeight, wheelBase));
   addWheel(true, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, wheelBase));
@@ -334,7 +357,7 @@ function init() {
   addWheel(false, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, -wheelBase));
 
 
-  
+
 
   // Controls
   document.addEventListener('keydown', e => {
@@ -363,11 +386,32 @@ function animate() {
   const delta = clock.getDelta();
   physicsWorld.stepSimulation(delta, 10);
 
-  // Остановка, если не жмут газ/тормоз
+  // Improved idle stabilization
   if (!keysPressed.forward && !keysPressed.backward) {
     const vel = carBody.getLinearVelocity();
-    if (vel.length() < 0.5) {
-      carBody.setLinearVelocity(new Ammo.btVector3(0, 0, 0));
+    const speed = vel.length();
+
+    // More aggressive velocity damping at very low speeds
+    if (speed < 2.0) {
+      // Apply linear damping based on current speed
+      const dampingFactor = 0.8; // Higher value = more damping
+      const newVel = new Ammo.btVector3(
+        vel.x() * (1 - dampingFactor * delta),
+        vel.y(),  // Don't dampen vertical velocity (gravity)
+        vel.z() * (1 - dampingFactor * delta)
+      );
+      carBody.setLinearVelocity(newVel);
+
+      // If extremely slow, just stop completely to avoid micro-movements
+      if (speed < 0.5) {
+        carBody.setLinearVelocity(new Ammo.btVector3(0, vel.y(), 0));
+
+        // Also zero out angular velocity to prevent rotation when stopped
+        const angVel = carBody.getAngularVelocity();
+        if (angVel.length() < 0.5) {
+          carBody.setAngularVelocity(new Ammo.btVector3(0, 0, 0));
+        }
+      }
     }
   }
 
@@ -378,6 +422,8 @@ function animate() {
   let steering = 0;
 
   // Reset brake
+  vehicle.setBrake(0, 0);
+  vehicle.setBrake(0, 1);
   vehicle.setBrake(0, 2);
   vehicle.setBrake(0, 3);
 
@@ -432,7 +478,7 @@ function animate() {
   const linVel = carBody.getLinearVelocity();
   const speed = linVel.length() * 3.6; // m/s в km/h
   const gear = engineForce < 0 ? 'R' : 'D';
-  hud.innerHTML = `Speed: ${speed.toFixed(0)} km/h Gear: ${gear}`;
+  hud.innerHTML = `Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h Gear: ${gear}`;
 
   renderer.render(scene, camera);
 }

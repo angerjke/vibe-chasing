@@ -79,7 +79,7 @@ function createDefCar(carColor, taillights) {
 function createTestCar(carColor, taillights) {
     const car = new THREE.Group();
   
-    const mainColor = 0x222244;
+    const mainColor = carColor;
     const glassColor = 0x22ccff;
     const baseColor = 0xcccccc;
     const wheelColor = 0x222222;
@@ -108,7 +108,7 @@ function createTestCar(carColor, taillights) {
   
     // Крыша
     const roof = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 0.1, 1.7),
+      new THREE.BoxGeometry(1.24, 0.1, 1.89),
       new THREE.MeshStandardMaterial({ color: mainColor })
     );
     roof.position.set(0, 0.76, 0);
