@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
 import { createTestCar, createDefCar } from './car-gen';
 import { createTrees } from './tree-gen';
-import { createHouse, createParkingLot, createModernHighrise, createClassicHouse } from './house-get';
+import { createHouse, createModernHighrise, createClassicHouse } from './house-get';
 import addMapBorders from './mapBordert';
 
 let alertLevel = 1;
@@ -91,7 +91,7 @@ function explodePoliceCar(car) {
   if (index !== -1) policeCars.splice(index, 1);
 }
 
-function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes) {
+function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
   const tuning = new Ammo.btVehicleTuning();
   const carColor = new THREE.Color(0x2233ff);
   const taillights = [];
@@ -199,7 +199,7 @@ document.body.appendChild(hud);
 let roadMeshes = []
 
 function isCarOnRoad(carPos, roadMeshes) {
-  for (const tile of roadMeshes) {
+  for (const tile of roadMeshes ??[]) {
     const halfX = tile.sizeX / 2;
     const halfZ = tile.sizeZ / 2;
     if (
@@ -219,7 +219,7 @@ function applyOffroadPenaltyByTiles(carBody, roadMeshes) {
   const carPos = new THREE.Vector3(origin.x(), origin.y(), origin.z());
 
   let isOnRoad = false;
-  for (const mesh of roadMeshes) {
+  for (const mesh of roadMeshes ?? []) {
     const box = new THREE.Box3().setFromObject(mesh);
     const flatCarPos = carPos.clone();
     flatCarPos.y = (box.min.y + box.max.y) / 2; // flatten to match road height
@@ -247,17 +247,17 @@ function applyOffroadPenaltyByTiles(carBody, roadMeshes) {
 const roadMap = [
   "                                          ",
   " |wWWWWWWWWWWWWWWWWWWWWwWWWWWWWWWWWWWWWWWW",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
-  "  w                    w                w ",
+  "  w                    ::               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
+  "  w                    w:               w ",
   "  WWWWWWWWWWWWWWWWWWWWWwWWWWWWWWWWWWWWWWw ",
   "  w                    w                w ",
   "  w                    w                w ",
@@ -296,7 +296,7 @@ const buildingsMap = [
 
 function generateBuildingsFromMap(map, scene) {
   if (!scene) return;
-  const tileSize = 10;
+  const tileSize = 20;
 
   for (let z = 0; z < map.length; z++) {
     const row = map[z];
@@ -340,7 +340,6 @@ function generateBuildingsFromMap(map, scene) {
 }
 
 function generateRoadFromMap(map, scene) {
-  const roadMeshes = [];
   const tileSize = 10;
 
   const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
@@ -348,11 +347,15 @@ function generateRoadFromMap(map, scene) {
   const markingWhite = new THREE.MeshStandardMaterial({ color: 0xffffff });
 
   const tileGeo = new THREE.BoxGeometry(tileSize, 0.1, tileSize);
-  const markingLineThinH = new THREE.BoxGeometry(tileSize * 0.9, 0.01, tileSize * 0.02);
-  const markingLineThinV = new THREE.BoxGeometry(tileSize * 0.02, 0.01, tileSize * 0.9);
+  const thinLineH = new THREE.BoxGeometry(tileSize * 0.9, 0.01, tileSize * 0.02);
+  const thinLineV = new THREE.BoxGeometry(tileSize * 0.02, 0.01, tileSize * 0.9);
+  const yellowLineH = new THREE.BoxGeometry(tileSize * 0.9, 0.01, tileSize * 0.015);
+  const yellowLineV = new THREE.BoxGeometry(tileSize * 0.015, 0.01, tileSize * 0.9);
 
-  // Невидимая платформа под уровнем земли — защита от проваливания
-  const fallbackShape = new Ammo.btBoxShape(new Ammo.btVector3(200, 0, 200));
+  const isRoad = (ch) => ['|', '-', '+', '=', '#', '.', ':', 'W', 'w'].includes(ch);
+
+  // Невидимая подложка под весь уровень
+  const fallbackShape = new Ammo.btBoxShape(new Ammo.btVector3(200, 5, 200));
   const fallbackTransform = new Ammo.btTransform();
   fallbackTransform.setIdentity();
   fallbackTransform.setOrigin(new Ammo.btVector3(0, -0.5, 0));
@@ -368,126 +371,74 @@ function generateRoadFromMap(map, scene) {
       const posX = (x - row.length / 2) * tileSize;
       const posZ = (z - map.length / 2) * tileSize;
 
-      let road = null;
+      if (!isRoad(char)) continue;
 
-      const isVertical = char === '|' || char === 'P' || char === '#' || char === ':' || char === 'w';
-      const isHorizontal = char === '-' || char === '=' || char === '.' || char === 'W';
+      // Основной прямоугольник дороги
+      const base = new THREE.Mesh(tileGeo, roadMaterial);
+      base.position.set(posX, 0.05, posZ);
+      base.receiveShadow = true;
+      scene.add(base);
+      roadMeshes.push(base);
 
-      // Простая дорога и широкие тайлы
-      if (isVertical || isHorizontal) {
-        if (char === 'W') {
-          // Четырёхполосная горизонтальная
-          const wideRoad = new THREE.Mesh(new THREE.BoxGeometry(tileSize, 0.1, tileSize ), roadMaterial);
-          wideRoad.position.set(posX, 0.05, posZ);
-          scene.add(wideRoad);
-          roadMeshes.push(wideRoad);
+      // Разметка
+      switch (char) {
+        case '|':
+        case 'w':
+          // Прерывистая вертикальная белая
+          const dotV = new THREE.Mesh(thinLineV, markingWhite);
+          dotV.position.set(posX, 0.11, posZ);
+          scene.add(dotV);
+          break;
 
-          const whiteSpacing = tileSize * 0.475;
-          const yellowSpacing = 0.02 * tileSize;
+        case '-':
+        case 'W':
+          // Прерывистая горизонтальная белая
+          const dotH = new THREE.Mesh(thinLineH, markingWhite);
+          dotH.position.set(posX, 0.11, posZ);
+          scene.add(dotH);
+          break;
 
-          // Белые линии по краям
-          for (let i = -1; i <= 1; i += 2) {
-            const whiteLine = new THREE.Mesh(markingLineThinH, markingWhite);
-            whiteLine.position.set(posX, 0.11, posZ + i * whiteSpacing);
-            scene.add(whiteLine);
-          }
+        case '+':
+          // Перекресток — просто квадрат дороги
+          break;
 
-          // Двойная жёлтая в центре
-          for (let i = -1; i <= 1; i += 2) {
-            const yellowGeo = new THREE.BoxGeometry(tileSize, 0.01, tileSize * 0.015);
-            const yellowLine = new THREE.Mesh(yellowGeo, markingYellow);
-            yellowLine.position.set(posX, 0.11, posZ + i * yellowSpacing);
-            scene.add(yellowLine);
-          }
-        } else if (char === 'w') {
-          // Четырёхполосная вертикальная
-          const wideRoad = new THREE.Mesh(new THREE.BoxGeometry(tileSize * 2, 0.1, tileSize), roadMaterial);
-          wideRoad.position.set(posX, 0.05, posZ);
-          scene.add(wideRoad);
-          roadMeshes.push(wideRoad);
-          const whiteSpacing = tileSize * 0.375;
-          const yellowSpacing = 0.02 * tileSize;
+        case '=':
+          // Двойная жёлтая линия горизонтальная
+          [-0.1, 0.1].forEach(offsetZ => {
+            const line = new THREE.Mesh(yellowLineH, markingYellow);
+            line.position.set(posX, 0.11, posZ + offsetZ * tileSize);
+            scene.add(line);
+          });
+          break;
 
-          // Белые линии по краям
-          for (let i = -1; i <= 1; i += 2) {
-            const whiteLine = new THREE.Mesh(markingLineThinV, markingWhite);
-            whiteLine.position.set(posX + i * whiteSpacing, 0.11, posZ);
-            scene.add(whiteLine);
-          }
+        case '#':
+          // Двойная жёлтая вертикальная
+          [-0.1, 0.1].forEach(offsetX => {
+            const line = new THREE.Mesh(yellowLineV, markingYellow);
+            line.position.set(posX + offsetX * tileSize, 0.11, posZ);
+            scene.add(line);
+          });
+          break;
 
-          // Двойная жёлтая в центре
-          for (let i = -1; i <= 1; i += 2) {
-            const yellowGeo = new THREE.BoxGeometry(tileSize * 0.015, 0.01, tileSize);
-            const yellowLine = new THREE.Mesh(yellowGeo, markingYellow);
-            yellowLine.position.set(posX + i * yellowSpacing, 0.11, posZ);
-            scene.add(yellowLine);
-          }
-        } else {
-          road = new THREE.Mesh(tileGeo, roadMaterial);
-          road.position.set(posX, 0.05, posZ);
-          scene.add(road);
-          roadMeshes.push(road);
-        }
-      }
+        case '.':
+          // Прерывистая белая горизонтальная
+          const lineH = new THREE.Mesh(thinLineH, markingWhite);
+          lineH.position.set(posX, 0.11, posZ);
+          scene.add(lineH);
+          break;
 
-      // Разметка жёлтая двойная сплошная горизонтальная (==)
-      if (char === '=') {
-        const spacing = 0.01 * tileSize;
-        const solidLength = tileSize;
-        const solidWidth = tileSize * 0.015;
-
-        for (let i = -1; i <= 1; i += 2) {
-          const markingGeo = new THREE.BoxGeometry(solidLength, 0.01, solidWidth);
-          const marking = new THREE.Mesh(markingGeo, markingYellow);
-          marking.position.set(posX, 0.11, posZ + i * spacing);
-          scene.add(marking);
-        }
-      }
-
-      // Разметка жёлтая двойная сплошная вертикальная (#)
-      if (char === '#') {
-        const spacing = 0.01 * tileSize;
-        const solidLength = tileSize;
-        const solidWidth = tileSize * 0.015;
-
-        for (let i = -1; i <= 1; i += 2) {
-          const markingGeo = new THREE.BoxGeometry(solidWidth, 0.01, solidLength);
-          const marking = new THREE.Mesh(markingGeo, markingYellow);
-          marking.position.set(posX + i * spacing, 0.11, posZ);
-          scene.add(marking);
-        }
-      }
-
-      // Разметка прерывистая горизонтальная (.)
-      if (char === '.') {
-        const marking = new THREE.Mesh(markingLineThinH, markingWhite);
-        marking.position.set(posX, 0.11, posZ);
-        scene.add(marking);
-      }
-
-      if (char === 'P') {
-        road = new THREE.Mesh(tileGeo, roadMaterial);
-        road.position.set(posX, 0.05, posZ);
-        road.add(createParkingLot(posX, posZ));
-        scene.add(road);
-      }
-
-      // Разметка прерывистая вертикальная (:)
-      if (char === ':') {
-        const marking = new THREE.Mesh(markingLineThinV, markingWhite);
-        marking.position.set(posX, 0.11, posZ);
-        scene.add(marking);
-      }
-
-      // Add markings based on the character
-      if (road) {
-        // Add edge lines to all roads
-
+        case ':':
+          // Прерывистая белая вертикальная
+          const lineV = new THREE.Mesh(thinLineV, markingWhite);
+          lineV.position.set(posX, 0.11, posZ);
+          scene.add(lineV);
+          break;
       }
     }
   }
   return roadMeshes;
 }
+
 
 function init() {
   survivalTimerInterval = setInterval(() => {
