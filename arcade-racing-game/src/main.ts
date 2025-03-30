@@ -2090,8 +2090,8 @@ function showGameOverOverlay(finalTime, finalDistance) {
   result.textContent = `Distance ${Math.floor(finalDistance)}m`;
 
   fetchLeaderboard().then(data => {
-    const html = data.map((e, i) =>
-      `<div>${i + 1}. <b>${e.name}</b> — ${e.time.toFixed(2)}s, ${Math.floor(e.distance)}m</div>`
+    const html = data.filter(e => !!e.name && !!e.distance).map((e, i) =>
+      `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)}m total distance</div>`
     ).join('');
     leaderboardOverlay.querySelector('#leaderboard-list').innerHTML = html;
   });
@@ -2114,8 +2114,10 @@ submitBtn.onclick = async () => {
 
   leaderboardList.innerHTML = 'Updating...';
   const data = await fetchLeaderboard();
-  leaderboardList.innerHTML = data.map((e, i) =>
-    `<div>${i + 1}. <b>${e.name}</b> — ${e.time.toFixed(2)}s, ${Math.floor(e.distance)}m</div>`
+  leaderboardList.innerHTML = data
+  .filter(e => !!e.name && !!e.distanc)
+  .map((e, i) =>
+    `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)}m total distance</div>`
   ).join('');
 };
 
@@ -2124,16 +2126,16 @@ submitBtn.onclick = async () => {
 
 async function postScore(name, time, distance) {
   const params = new URLSearchParams({
-    name: playerName,
+    name: name,
     time: time.toFixed(2),
     distance: distance.toFixed(0)
   });
   
-              await fetch(`https://script.google.com/macros/s/AKfycbybJWWwtEvENizw6GsHYtSVYXmFMKF9Ri80a-HbdxRCyxlavuqEMpsGwFrvK88jllmG/exec?${params.toString()}`)
+              await fetch(`https://script.google.com/macros/s/AKfycbzNgtDSDVNbauWAKf7sA4GIh-Zei6bm-00hYHoIACp3La8RLt2gXngctJm4ZbeFmr_Q/exec?${params.toString()}`)
 }
 
 async function fetchLeaderboard() {
-  const res = await fetch('https://script.google.com/macros/s/AKfycbybJWWwtEvENizw6GsHYtSVYXmFMKF9Ri80a-HbdxRCyxlavuqEMpsGwFrvK88jllmG/exec');
+  const res = await fetch('https://script.google.com/macros/s/AKfycbzNgtDSDVNbauWAKf7sA4GIh-Zei6bm-00hYHoIACp3La8RLt2gXngctJm4ZbeFmr_Q/exec');
   const data = await res.json();
   return data.sort((a, b) => b.distance - a.distance).slice(0, 10);
 }
