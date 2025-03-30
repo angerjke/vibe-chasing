@@ -1659,21 +1659,15 @@ function init() {
 
   // Controls
   document.addEventListener('keydown', e => {
-    if (e.code === 'KeyW') keysPressed.forward = true;
-    if (e.code === 'KeyS') keysPressed.backward = true;
-    if (e.code === 'KeyA') keysPressed.left = true;
-    if (e.code === 'KeyD') keysPressed.right = true;
-    if (e.code === 'KeyC') keysPressed.camToggle = true;
+    if (e.code === 'KeyS' || e.code === 'ArrowDown') keysPressed.backward = true;
+    if (e.code === 'KeyA' || e.code === 'ArrowLeft') keysPressed.left = true;
+    if (e.code === 'KeyD' || e.code === 'ArrowRight') keysPressed.right = true;
   });
   document.addEventListener('keyup', e => {
-    if (e.code === 'KeyW') keysPressed.forward = false;
-    if (e.code === 'KeyS') keysPressed.backward = false;
-    if (e.code === 'KeyA') keysPressed.left = false;
-    if (e.code === 'KeyD') keysPressed.right = false;
-    if (e.code === 'KeyC' && keysPressed.camToggle) {
-      useFollowCamera = !useFollowCamera;
-      keysPressed.camToggle = false;
-    }
+    if (e.code === 'KeyS' || e.code === 'ArrowDown') keysPressed.backward = false;
+    if (e.code === 'KeyA' || e.code === 'ArrowLeft') keysPressed.left = false;
+    if (e.code === 'KeyD' || e.code === 'ArrowRight') keysPressed.right = false;
+
   });
 }
 
@@ -2129,15 +2123,17 @@ submitBtn.onclick = async () => {
 }
 
 async function postScore(name, time, distance) {
-  await fetch('https://script.google.com/macros/s/AKfycbypD-7ncC549p6V99LT5-uOb4dnqifRWtqIRH36Dc6sY5j_9PThaJzieTwzK7vac9g/exec', {
-    method: 'POST',
-    body: JSON.stringify({ name, time, distance }),
-    headers: { 'Content-Type': 'application/json' }
+  const params = new URLSearchParams({
+    name: playerName,
+    time: time.toFixed(2),
+    distance: distance.toFixed(0)
   });
+  
+              await fetch(`https://script.google.com/macros/s/AKfycbybJWWwtEvENizw6GsHYtSVYXmFMKF9Ri80a-HbdxRCyxlavuqEMpsGwFrvK88jllmG/exec?${params.toString()}`)
 }
 
 async function fetchLeaderboard() {
-  const res = await fetch('https://script.google.com/macros/s/AKfycbypD-7ncC549p6V99LT5-uOb4dnqifRWtqIRH36Dc6sY5j_9PThaJzieTwzK7vac9g/exec');
+  const res = await fetch('https://script.google.com/macros/s/AKfycbybJWWwtEvENizw6GsHYtSVYXmFMKF9Ri80a-HbdxRCyxlavuqEMpsGwFrvK88jllmG/exec');
   const data = await res.json();
   return data.sort((a, b) => b.distance - a.distance).slice(0, 10);
 }
