@@ -3,6 +3,311 @@
 import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
 import { initLevelEditor } from './edit';
+import nipplejs from 'nipplejs';
+import { level } from './level';
+let stuckTimer = 0;
+let collisionEffectTimer = 0;
+let totalDistance = -55;
+let lastCarPos = new THREE.Vector3();
+let mobileStick = null;
+let mobileForce = { brake: 0, turn: 0 };
+let touchLeft = false;
+let touchRight = false;
+
+const redLightMat = new THREE.MeshStandardMaterial({
+  color: 0xff0000,
+  emissive: 0x000000,
+  emissiveIntensity: 1
+});
+
+const blueLightMat = new THREE.MeshStandardMaterial({
+  color: 0x0000ff,
+  emissive: 0x000000,
+  emissiveIntensity: 1
+});
+
+function createPoliceCar(colorOverride = null) {
+  const car = new THREE.Group();
+
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+  const blackMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  const redMat = new THREE.MeshStandardMaterial({ color: 0xff3333 });
+  const blueMat = new THREE.MeshStandardMaterial({ color: 0x3399ff });
+
+  // --- Кузов
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 0.6, 4),
+    blackMat
+  );
+  body.position.y = 0.3;
+  car.add(body);
+  const hood = new THREE.Mesh(
+  new THREE.BoxGeometry(2, 0.6, 1.2),
+  blackMat
+);
+hood.position.set(0, 0.3, -1.4);
+car.add(hood);
+
+// Багажник (задняя часть)
+const trunk = new THREE.Mesh(
+  new THREE.BoxGeometry(2, 0.6, 1),
+  blackMat
+);
+trunk.position.set(0, 0.3, 1.4);
+car.add(trunk);
+
+// Двери/бока
+const sidePanel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 2), blackMat);
+for (let x of [-1.1, 1.1]) {
+  const panel = sidePanel.clone();
+  panel.position.set(x, 0.3, 0);
+  car.add(panel);
+}
+
+// Передний бампер
+const bumperFront = new THREE.Mesh(
+  new THREE.BoxGeometry(2, 0.3, 0.4),
+  blackMat
+);
+bumperFront.position.set(0, 0.15, -2.2);
+car.add(bumperFront);
+
+// Задний бампер
+const bumperRear = bumperFront.clone();
+bumperRear.position.z = 2.2;
+car.add(bumperRear);
+
+  // --- Тёмные боковые панели
+  const side = new THREE.Mesh(new THREE.BoxGeometry(2, 0.6, 0.1), blackMat);
+  for (const dz of [-1.9, 1.9]) {
+    const panel = side.clone();
+    panel.position.set(0, 0.3, dz);
+    car.add(panel);
+  }
+
+  // --- Крыша
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(1.4, 0.3, 2),
+    whiteMat
+  );
+  roof.position.set(0, 0.75, 0);
+  car.add(roof);
+
+  // --- Мигалка
+  const lightBarBase = new THREE.Mesh(new THREE.BoxGeometry(1, 0.2, 0.4), blackMat);
+  lightBarBase.position.set(0, 0.92, 0);
+  car.add(lightBarBase);
+
+
+  // --- Окна
+  const windowMat = new THREE.MeshStandardMaterial({ color: 0x336699, transparent: true, opacity: 0.8 });
+  const window = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.8), windowMat);
+  window.position.set(0, 0.75, 0);
+  car.add(window);
+
+  // --- Колёса
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+  const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+  for (const [x, z] of [
+    [-0.9, -1.5],
+    [0.9, -1.5],
+    [-0.9, 1.5],
+    [0.9, 1.5]
+  ]) {
+    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(x, 0.2, z);
+    car.add(wheel);
+  }
+
+  // --- Передние огни
+  const lightFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0xffcc00 }));
+  lightFront.position.set(-0.6, 0.4, -2.05);
+  car.add(lightFront);
+  const lightFront2 = lightFront.clone();
+  lightFront2.position.x *= -1;
+  car.add(lightFront2);
+
+  // --- Задние огни
+  const brakeLight = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0xff0000 }));
+  brakeLight.position.set(-0.6, 0.4, 2.05);
+  car.add(brakeLight);
+  const brakeLight2 = brakeLight.clone();
+  brakeLight2.position.x *= -1;
+  car.add(brakeLight2);
+
+  const lightLeft = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.4), blueLightMat);
+lightLeft.position.set(-0.25, 0.92, 0);
+car.add(lightLeft);
+
+const lightRight = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.4), redLightMat);
+lightRight.position.set(0.25, 0.92, 0);
+car.add(lightRight);
+
+  return car;
+}
+
+
+const cameraZone = {
+  xMin: -250,
+  xMax: -100,
+  zMin: 10,
+  zMax: 350
+};
+
+const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
+if (isMobile) {
+  window.addEventListener('touchstart', e => {
+    for (const touch of e.touches) {
+      if (touch.clientX < window.innerWidth / 2) touchLeft = true;
+      else touchRight = true;
+    }
+  });
+
+  window.addEventListener('touchend', e => {
+    // Проверяем, остались ли активные пальцы
+    touchLeft = false;
+    touchRight = false;
+    for (const touch of e.touches) {
+      if (touch.clientX < window.innerWidth / 2) touchLeft = true;
+      else touchRight = true;
+    }
+  });
+}
+
+
+
+function createConcreteBarrierMesh() {
+  const group = new THREE.Group();
+
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0xb8b8b8 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+
+  const top = new THREE.Mesh(new THREE.BoxGeometry(2, 0.6, 0.5), baseMat);
+  top.position.y = 0.6;
+  group.add(top);
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.6), darkMat);
+  base.position.y = 0.25;
+  group.add(base);
+
+
+  return group;
+}
+
+function createConcreteBarrierLine(start: [number, number], rotation: number, length: number, step = 2.2, physicsWorld = null) {
+  const group = new THREE.Group();
+  const count = Math.floor(length / step);
+  const shape = new Ammo.btBoxShape(new Ammo.btVector3(1, 0.6, 0.25));
+
+  for (let i = 0; i < count; i++) {
+    const offset = i * step;
+    const dx = Math.cos(rotation) * offset;
+    const dz = Math.sin(rotation) * offset;
+    const px = start[0] + dx;
+    const pz = start[1] + dz;
+
+    // === Визуал ===
+    const instance = createConcreteBarrierMesh();
+    instance.position.set(px, 0, pz);
+    instance.rotation.y = rotation;
+    group.add(instance);
+
+    // === Физика ===
+    if (physicsWorld) {
+      const transform = new Ammo.btTransform();
+      transform.setIdentity();
+      transform.setOrigin(new Ammo.btVector3(px, 1.0, pz));
+
+      const quat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotation);
+      transform.setRotation(new Ammo.btQuaternion(quat.x, quat.y, quat.z, quat.w));
+
+      const motion = new Ammo.btDefaultMotionState(transform);
+      const rbInfo = new Ammo.btRigidBodyConstructionInfo(0, motion, shape, new Ammo.btVector3(0, 0, 0));
+      const body = new Ammo.btRigidBody(rbInfo);
+      physicsWorld.addRigidBody(body);
+      instance.userData.physicsBody = body;
+      const visualY = 1.0;
+      instance.position.set(px, visualY, pz);
+
+      transform.setOrigin(new Ammo.btVector3(px, visualY, pz));
+
+
+    }
+  }
+
+
+  return group;
+}
+
+
+
+function createBarrier(position: [number, number], rotation = 0, scale = 1, physicsWorld = null) {
+  const group = new THREE.Group();
+  group.position.set(position[0], 0, position[1]);
+  group.rotation.y = rotation;
+  group.scale.set(scale, scale, scale);
+
+  const orange = new THREE.MeshStandardMaterial({ color: 0xff8c42 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xf8f8f8 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xaa3333 });
+
+  // Верхняя балка
+  const top = new THREE.Mesh(new THREE.BoxGeometry(4, 0.6, 0.6), orange);
+  top.position.y = 1.2;
+  group.add(top);
+
+  // Диагональные бело-оранжевые полосы (как наклейка)
+  for (let i = 0; i < 4; i++) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.61, 0.01), white);
+    stripe.position.set(-1.5 + i * 0.9, 1.2, 0.31);
+    stripe.rotation.z = -Math.PI / 6;
+    group.add(stripe);
+  }
+
+  // Ножки (4 штуки)
+  const legGeo = new THREE.BoxGeometry(0.3, 1.2, 0.3);
+  const legPositions = [
+    [-1.2, 0.6, -0.4],
+    [1.2, 0.6, -0.4],
+    [-1.2, 0.6, 0.4],
+    [1.2, 0.6, 0.4],
+  ];
+  for (let [x, y, z] of legPositions) {
+    const leg = new THREE.Mesh(legGeo, orange);
+    leg.position.set(x, y, z);
+    group.add(leg);
+  }
+
+  // Нижняя перекладина
+  const bottom = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.2, 0.3), orange);
+  bottom.position.set(0, 0.4, 0);
+  group.add(bottom);
+
+  // Красные кубики наверху
+  for (let x of [-1.5, 1.5]) {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), red);
+    cap.position.set(x, 1.5, 0);
+    group.add(cap);
+  }
+
+  // === Физика ===
+  if (physicsWorld) {
+    const shape = new Ammo.btBoxShape(new Ammo.btVector3(2, 1, 0.3));
+    const transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(position[0], 1, position[1]));
+    const motion = new Ammo.btDefaultMotionState(transform);
+    const rbInfo = new Ammo.btRigidBodyConstructionInfo(0, motion, shape, new Ammo.btVector3(0, 0, 0));
+    const body = new Ammo.btRigidBody(rbInfo);
+    physicsWorld.addRigidBody(body);
+  }
+
+  return group;
+}
+
+
 
 function createRoadSegment(config) {
   const {
@@ -175,6 +480,13 @@ function createTree(type = 0, scale = 4, rotation = 0) {
   return group;
 }
 
+function isPointVisibleToCamera(point, camera) {
+  const frustum = new THREE.Frustum();
+  const camViewProjectionMatrix = new THREE.Matrix4()
+    .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(camViewProjectionMatrix);
+  return frustum.containsPoint(point);
+}
 
 
 function generateLevelFromObjects(objects, scene, physicsWorld) {
@@ -192,13 +504,27 @@ function generateLevelFromObjects(objects, scene, physicsWorld) {
         withCurbs: obj.withCurbs ?? true,
         physicsWorld
       });
+
+      const width = obj.width ?? 6;
+      const length = obj.length ?? 20;
+
+      // Сохраняем как объект с координатами
+      roadMeshes.push({
+        mesh,
+        x: obj.position[0],
+        z: obj.position[1],
+        sizeX: width,
+        sizeZ: length
+      });
     }
 
     else if (obj.type === 'tree') {
       const tree = createTree(obj.treeType ?? 0, obj.scale ?? 4, obj.rotation ?? 0);
       tree.position.set(obj.position[0], 0, obj.position[1]);
       scene.add(tree);
-    
+      tree.userData.isObstacle = true;
+      obstacleMeshes.push(tree);
+
       // (по желанию) коллайдер:
       if (physicsWorld) {
         const shape = new Ammo.btCylinderShape(new Ammo.btVector3(0.3, 2, 0.3));
@@ -212,6 +538,18 @@ function generateLevelFromObjects(objects, scene, physicsWorld) {
       }
     }
 
+    else if (obj.type === 'borderLine') {
+      const mesh = createConcreteBarrierLine(
+        obj.start,
+        obj.rotation ?? 0,
+        obj.length ?? 10,
+        obj.step ?? 2.2,
+        physicsWorld
+      );
+      scene.add(mesh);
+    }
+
+
     else if (['house', 'classicHouse', 'highrise'].includes(obj.type)) {
       mesh = createBuilding({
         type: obj.type,
@@ -220,9 +558,21 @@ function generateLevelFromObjects(objects, scene, physicsWorld) {
         scale: obj.scale ?? 1,
         physicsWorld
       });
+      mesh.userData.isObstacle = true;
+      obstacleMeshes.push(mesh);
     }
 
-    if (mesh) scene.add(mesh);
+    else if (obj.type === 'barrier') {
+      const mesh = createBarrier(obj.position, obj.rotation ?? 0, obj.scale ?? 1, physicsWorld);
+      scene.add(mesh);
+    }
+
+    if (mesh) {
+      scene.add(mesh);
+      mesh.userData.isObstacle = true;
+      obstacleMeshes.push(mesh);
+    }
+
   }
 }
 
@@ -248,22 +598,60 @@ function createBuilding(config) {
       building = createHouse(0, 0); break;
   }
 
-  // Сброс позиции, т.к. функции создают дом со смещением
   building.position.set(0, 0, 0);
   building.rotation.y = rotation;
   building.scale.set(scale, scale, scale);
 
-  // Оборачиваем в контейнер с нужной позицией
   const container = new THREE.Group();
   container.add(building);
   container.position.set(position[0], 0, position[1]);
+
+  if (physicsWorld) {
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+
+    if (type === 'highrise') {
+      size.set(12, 25, 12).multiplyScalar(scale);
+      center.set(0, 25 / 2 * scale, 0);
+    }
+    else if (type === 'classicHouse') {
+      size.set(6, 8.5, 6).multiplyScalar(scale); // 4 + 3 + 1.5 запас
+      center.set(0, 4.25 * scale, 0);
+    }
+    else if (type === 'house') {
+      size.set(8, 7, 6).multiplyScalar(scale); // 4 (base) + 3 (roof cone)
+      center.set(0, 3.5 * scale, 0);
+    }
+
+    const shape = new Ammo.btBoxShape(
+      new Ammo.btVector3(size.x / 2, size.y / 2, size.z / 2)
+    );
+
+    const centerWorld = new THREE.Vector3(center.x, center.y, center.z)
+      .applyEuler(new THREE.Euler(0, rotation, 0))
+      .add(new THREE.Vector3(position[0], 0, position[1]));
+
+    const transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(centerWorld.x, centerWorld.y, centerWorld.z));
+
+    const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotation, 0));
+    transform.setRotation(new Ammo.btQuaternion(quat.x, quat.y, quat.z, quat.w));
+
+    const motion = new Ammo.btDefaultMotionState(transform);
+    const rbInfo = new Ammo.btRigidBodyConstructionInfo(0, motion, shape, new Ammo.btVector3(0, 0, 0));
+    const body = new Ammo.btRigidBody(rbInfo);
+    physicsWorld.addRigidBody(body);
+  }
 
   return container;
 }
 
 
 
-const levelObjects = []
+
+const levelObjects = level;
+
 
 
 
@@ -320,7 +708,7 @@ function createModernHighrise(x, z) {
   }
 
   building.position.set(x, 0, z);
-  building.rotation.set(0, Math.PI/2, 0);
+  building.rotation.set(0, Math.PI / 2, 0);
   return building;
 }
 
@@ -385,7 +773,7 @@ function createClassicHouse(x, z) {
   house.add(chimney);
 
   house.position.set(x, 0, z);
-  house.scale.set(2,2,2);
+  house.scale.set(2, 2, 2);
   return house;
 }
 
@@ -465,8 +853,8 @@ function createHouse(x, z) {
   house.add(fenceGroup);
 
   house.position.set(x, 0, z);
-  house.scale.set(2,2,2);
-  
+  house.scale.set(2, 2, 2);
+
   return house;
 }
 
@@ -487,7 +875,7 @@ function addMapBorders(scene, physicsWorld, size = 1400, height = 14) {
     if (pos.rotY) mesh.rotation.y = pos.rotY;
     scene.add(mesh);
 
-    const shape = new Ammo.btBoxShape(new Ammo.btVector3(size / 2, height / 2, 0.5));
+    const shape = new Ammo.btBoxShape(new Ammo.btVector3(2, height / 2, 0.5));
     const transform = new Ammo.btTransform();
     transform.setIdentity();
     transform.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
@@ -702,7 +1090,7 @@ function createTrapezoidCabin(color = 0x444444) {
 }
 
 let alertLevel = 1;
-const maxAlertLevel = 5;
+const maxAlertLevel = 122;
 
 
 let scene, camera, renderer, clock, vehicle;
@@ -733,13 +1121,26 @@ arrestMessage.style.display = 'none';
 arrestMessage.innerText = 'Busted!';
 document.body.appendChild(arrestMessage);
 
+let arrCount = 0
+function getPlayerSpeedKmh() {
+  const linVel = carBody.getLinearVelocity();
+  return linVel.length() * 3.6;
+}
+
 function checkPlayerArrested() {
   const playerPos = carMesh.position;
 
   for (let car of policeCars) {
     const policePos = car.mesh.position;
+
+
     const distance = playerPos.distanceTo(policePos);
-    if (distance < 4) {
+    if (distance < 4 && getPlayerSpeedKmh() < 50) {
+      arrCount++;
+      if (arrCount > 2) {
+        arrCount = 0;
+        return true;
+      }
       return true;
     }
   }
@@ -747,10 +1148,11 @@ function checkPlayerArrested() {
 }
 
 const keysPressed = { forward: false, backward: false, left: false, right: false, camToggle: false };
-let useFollowCamera = true;
+let useFollowCamera = false;
 let taillights = [];
 
 function explodePoliceCar(car) {
+  if(gameOver) return;
   const { mesh, body, vehicle } = car;
 
   // Визуальный взрыв — создаём яркий вспышечный шар
@@ -786,92 +1188,129 @@ function explodePoliceCar(car) {
 }
 
 function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
-  const tuning = new Ammo.btVehicleTuning();
-  const carColor = new THREE.Color(0x2233ff);
-  const taillights = [];
-  const mesh = createDefCar(carColor, taillights);
-  mesh.position.set(Math.random() * 100 - 50, 1, Math.random() * 100 - 50);
-  scene.add(mesh);
+  const maxAttempts = 30;
+  const playerPos = playerMesh.position.clone();
 
-  const chassisShape = new Ammo.btBoxShape(new Ammo.btVector3(1, 0.3, 2));
-  const transform = new Ammo.btTransform();
-  transform.setIdentity();
-  transform.setOrigin(new Ammo.btVector3(mesh.position.x, mesh.position.y, mesh.position.z));
-  const mass = 600;
-  const inertia = new Ammo.btVector3(0, 0, 0);
-  chassisShape.calculateLocalInertia(mass, inertia);
-  const motionState = new Ammo.btDefaultMotionState(transform);
-  const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, chassisShape, inertia);
-  const body = new Ammo.btRigidBody(rbInfo);
-  body.setFriction(0.8);
-  body.setDamping(0.1, 0.1);
-  body.setRestitution(0.1);
-  physicsWorld.addRigidBody(body);
-
-  const rayCaster = new Ammo.btDefaultVehicleRaycaster(physicsWorld);
-  const vehicle = new Ammo.btRaycastVehicle(tuning, body, rayCaster);
-  vehicle.setCoordinateSystem(0, 1, 2);
-  physicsWorld.addAction(vehicle);
-
-  const wheelRadius = 0.4;
-  const wheelWidth = 0.3;
-  const wheelHalfTrack = 0.9;
-  const wheelAxisHeight = 0.2;
-  const wheelBase = 1.5;
-
-  function addWheel(isFront, pos) {
-    const wheelInfo = vehicle.addWheel(
-      pos,
-      new Ammo.btVector3(0, -1, 0),
-      new Ammo.btVector3(-1, 0, 0),
-      0.4,
-      wheelRadius,
-      tuning,
-      isFront
-    );
-    wheelInfo.set_m_suspensionStiffness(30);
-    wheelInfo.set_m_wheelsDampingRelaxation(4.3);
-    wheelInfo.set_m_wheelsDampingCompression(4.4);
-    wheelInfo.set_m_frictionSlip(1200);
-    wheelInfo.set_m_rollInfluence(0.05);
-    wheelInfo.set_m_maxSuspensionForce(10000);
-
-  }
-  addWheel(true, new Ammo.btVector3(-wheelHalfTrack, wheelAxisHeight, wheelBase));
-  addWheel(true, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, wheelBase));
-  addWheel(false, new Ammo.btVector3(-wheelHalfTrack, wheelAxisHeight, -wheelBase));
-  addWheel(false, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, -wheelBase));
-
-  const road = roadMeshes[Math.floor(Math.random() * roadMeshes.length)];
-
-  // Получаем позицию дороги
-  const roadPos = new THREE.Vector3();
-  if (road) {
-    //road.getWorldPosition(roadPos);
-  }
-
-  // Добавим небольшое случайное смещение (в пределах тайла)
-  const tileSize = 10;
-  const offsetX = (Math.random() - 0.5) * tileSize * 0.5;
-  const offsetZ = (Math.random() - 0.5) * tileSize * 0.5;
-
-  const spawnX = roadPos.x + offsetX;
-  const spawnZ = roadPos.z + offsetZ;
-
-  mesh.position.set(spawnX, 1, spawnZ);
-
-  policeCars.push({
-    mesh, body, taillights, vehicle,
-    smoothedDir: null,
-    steeringSmoothed: 0,
-    maxSpeed: 160 + Math.random() * 20, // км/ч
-    enginePower: 2300 + Math.random() * 1000,
-    behaviorOffset: new THREE.Vector3(
-      (Math.random() - 0.5) * 10,
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // 1. Случайный угол и расстояние
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 50 + Math.random() * 30; // 50–80 метров
+    const offset = new THREE.Vector3(
+      Math.cos(angle) * distance,
       0,
-      (Math.random() - 0.5) * 10
-    )
-  });
+      Math.sin(angle) * distance
+    );
+
+    const spawnPos = playerPos.clone().add(offset);
+
+    // 2. Проверка — не в камере?
+    if (isPointVisibleToCamera(spawnPos, camera)) continue;
+
+    // 3. Проверка — точка на дороге?
+    if (!isCarOnRoad(spawnPos, roadMeshes)) continue;
+
+    // 4. Проверка — не около препятствий?
+    let tooClose = false;
+    for (const obs of obstacleMeshes) {
+      const obsPos = new THREE.Vector3();
+      obs.getWorldPosition(obsPos);
+      if (spawnPos.distanceTo(obsPos) < 6) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (tooClose) continue;
+
+    // 5. Проверка — не в другой полицейской машине?
+    for (const car of policeCars) {
+      if (spawnPos.distanceTo(car.mesh.position) < 6) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (tooClose) continue;
+
+    // === Успех: создаём машину ===
+    const carColor = new THREE.Color(0x2233ff);
+    const taillights = [];
+    const mesh = createPoliceCar();
+
+    mesh.position.copy(spawnPos);
+    let lightsOn = false;
+setInterval(() => {
+  lightsOn = !lightsOn;
+
+  redLightMat.emissive.setHex(lightsOn ? 0xff0000 : 0x000000);
+  blueLightMat.emissive.setHex(lightsOn ? 0x000000 : 0x0000ff);
+}, 300);
+    scene.add(mesh);
+
+    // Ammo физика:
+    const chassisShape = new Ammo.btBoxShape(new Ammo.btVector3(1, 0.3, 2));
+    const transform = new Ammo.btTransform();
+    transform.setIdentity();
+    transform.setOrigin(new Ammo.btVector3(spawnPos.x, spawnPos.y, spawnPos.z));
+    const mass = 600;
+    const inertia = new Ammo.btVector3(0, 0, 0);
+    chassisShape.calculateLocalInertia(mass, inertia);
+    const motionState = new Ammo.btDefaultMotionState(transform);
+    const rbInfo = new Ammo.btRigidBodyConstructionInfo(mass, motionState, chassisShape, inertia);
+    const body = new Ammo.btRigidBody(rbInfo);
+    body.setFriction(0.8);
+    body.setDamping(0.1, 0.1);
+    body.setRestitution(0.1);
+    physicsWorld.addRigidBody(body);
+
+    const tuning = new Ammo.btVehicleTuning();
+    const rayCaster = new Ammo.btDefaultVehicleRaycaster(physicsWorld);
+    const vehicle = new Ammo.btRaycastVehicle(tuning, body, rayCaster);
+    vehicle.setCoordinateSystem(0, 1, 2);
+    physicsWorld.addAction(vehicle);
+
+    const wheelRadius = 0.4;
+    const wheelHalfTrack = 0.9;
+    const wheelAxisHeight = 0.2;
+    const wheelBase = 1.5;
+
+    function addWheel(isFront, pos) {
+      const wheelInfo = vehicle.addWheel(
+        pos,
+        new Ammo.btVector3(0, -1, 0),
+        new Ammo.btVector3(-1, 0, 0),
+        0.4,
+        wheelRadius,
+        tuning,
+        isFront
+      );
+      wheelInfo.set_m_suspensionStiffness(30);
+      wheelInfo.set_m_wheelsDampingRelaxation(4.3);
+      wheelInfo.set_m_wheelsDampingCompression(4.4);
+      wheelInfo.set_m_frictionSlip(1200);
+      wheelInfo.set_m_rollInfluence(0.05);
+      wheelInfo.set_m_maxSuspensionForce(10000);
+    }
+
+    addWheel(true, new Ammo.btVector3(-wheelHalfTrack, wheelAxisHeight, wheelBase));
+    addWheel(true, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, wheelBase));
+    addWheel(false, new Ammo.btVector3(-wheelHalfTrack, wheelAxisHeight, -wheelBase));
+    addWheel(false, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, -wheelBase));
+
+    policeCars.push({
+      stuckTimer: 0,
+      mesh, body, taillights, vehicle,
+      smoothedDir: null,
+      steeringSmoothed: 0,
+      maxSpeed: 200 + Math.random() * 20,
+      enginePower: 2300 + Math.random() * 1000,
+      behaviorOffset: new THREE.Vector3(
+        (Math.random() - 0.5) * 10,
+        0,
+        (Math.random() - 0.5) * 10
+      )
+    });
+
+    break;
+  }
 }
 
 
@@ -889,9 +1328,10 @@ hud.style.pointerEvents = 'none';
 hud.innerHTML = 'Speed: 0 km/h Gear: D';
 document.body.appendChild(hud);
 let roadMeshes = []
+let obstacleMeshes = [];
 
 function isCarOnRoad(carPos, roadMeshes) {
-  for (const tile of roadMeshes ??[]) {
+  for (const tile of roadMeshes ?? []) {
     const halfX = tile.sizeX / 2;
     const halfZ = tile.sizeZ / 2;
     if (
@@ -921,7 +1361,7 @@ function applyOffroadPenaltyByTiles(carBody, roadMeshes) {
     }
   }
 
-  console.log(isOnRoad)
+
   if (!isOnRoad) {
     const velocity = carBody.getLinearVelocity();
     const slowdown = 1;
@@ -983,7 +1423,23 @@ function init() {
   scene.background = new THREE.Color(0xffcc99);
   scene.fog = new THREE.Fog(0xffcc99, 30, 250);
 
- 
+  const zonePlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(cameraZone.xMax - cameraZone.xMin, cameraZone.zMax - cameraZone.zMin),
+    new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
+  );
+  
+  zonePlane.rotation.x = -Math.PI / 2;
+  zonePlane.position.set(
+    (cameraZone.xMin + cameraZone.xMax) / 2,
+    0.1,
+    (cameraZone.zMin + cameraZone.zMax) / 2
+  );
+  
+  // debug zone scene.add(zonePlane);
+  
+  
+
+
 
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -994,6 +1450,46 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
+
+  if (isMobile) {
+    const leftZone = document.createElement('div');
+    const rightZone = document.createElement('div');
+  
+    leftZone.innerText = '⟵ TURN LEFT';
+    rightZone.innerText = 'TURN RIGHT ⟶';
+  
+    for (const zone of [leftZone, rightZone]) {
+      Object.assign(zone.style, {
+        position: 'absolute',
+        top: '0',
+        bottom: '0',
+        width: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#ffffffaa',
+        fontSize: '18px',
+        fontFamily: 'Orbitron, monospace',
+        pointerEvents: 'none', // не мешает тапам
+        zIndex: 10,
+        userSelect: 'none'
+      });
+    }
+  
+    leftZone.style.left = '0';
+    leftZone.style.background = 'rgba(0,0,0,0.1)';
+    rightZone.style.right = '0';
+    rightZone.style.background = 'rgba(0,0,0,0.1)';
+  
+    document.body.appendChild(leftZone);
+    document.body.appendChild(rightZone);
+
+    setTimeout(() => {
+      leftZone.remove();
+      rightZone.remove();
+    }, 10000);
+  }
+  
 
   // Ammo physics world
   let collisionCfg = new Ammo.btDefaultCollisionConfiguration();
@@ -1020,7 +1516,7 @@ function init() {
 
   setInterval(() => {
     for (let i = 0; i < alertLevel * 4; i++) {
-      //spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+      spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
     }
   }, 10 * 1000);
 
@@ -1123,9 +1619,9 @@ function init() {
   vehicle.setCoordinateSystem(0, 1, 2);
   physicsWorld.addAction(vehicle);
 
-    // spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-    // spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-    // spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
 
   // Wheels
   const wheelRadius = 0.4;
@@ -1179,34 +1675,42 @@ function init() {
       keysPressed.camToggle = false;
     }
   });
-  initLevelEditor({
-    scene,
-    camera,
-    ground,
-    physicsWorld,
-    createRoadSegment,
-    createTree,
-    createHouse,
-    createClassicHouse,
-    createModernHighrise,
-    generateLevelFromObjects,
-  });
-
-  // roadMeshes = generateRoadFromMap(roadMap, scene);
-  // generateBuildingsFromMap(buildingsMap, scene);
 }
+
+function despawnPoliceCar(car) {
+  const { mesh, body, vehicle } = car;
+
+  physicsWorld.removeRigidBody(body);
+  physicsWorld.removeAction(vehicle);
+  scene.remove(mesh);
+
+  const index = policeCars.indexOf(car);
+  if (index !== -1) policeCars.splice(index, 1);
+}
+
 
 function updatePoliceAI(delta) {
   for (let car of policeCars) {
     const { mesh, vehicle, body } = car;
 
+
     const playerPos = carMesh.position.clone();
     const policePos = mesh.position.clone();
+
+
+
 
     // Направление к игроку с индивидуальным смещением
     const toPlayer = new THREE.Vector3().subVectors(playerPos, policePos);
     toPlayer.add(car.behaviorOffset); // индивидуальное отклонение
     const distance = toPlayer.length();
+
+    const distToPlayer = policePos.distanceTo(playerPos);
+    if (distToPlayer > 150) {
+      despawnPoliceCar(car);
+      spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+      continue;
+    }
 
     if (distance > 300) continue;
 
@@ -1219,6 +1723,16 @@ function updatePoliceAI(delta) {
       if (dist < 20 && dist > 0.01) {
         const strength = 1.5 / dist; // усилено
         avoidance.add(diff.normalize().multiplyScalar(strength));
+      }
+      for (let obs of obstacleMeshes) {
+        const obsPos = new THREE.Vector3();
+        obs.getWorldPosition(obsPos);
+        const diff = new THREE.Vector3().subVectors(policePos, obsPos);
+        const dist = diff.length();
+        if (dist < 10 && dist > 0.1) {
+          const strength = 1.5 / dist;
+          avoidance.add(diff.normalize().multiplyScalar(strength));
+        }
       }
     }
 
@@ -1260,6 +1774,17 @@ function updatePoliceAI(delta) {
     vehicle.setBrake(brakingForce, 3);
     vehicle.setSteeringValue(car.steeringSmoothed, 0);
     vehicle.setSteeringValue(car.steeringSmoothed, 1);
+    if (speed < 5.0) {
+      car.stuckTimer += delta;
+    } else {
+      car.stuckTimer = 0;
+    }
+    
+    if (car.stuckTimer > 1.0) {
+      despawnPoliceCar(car);
+      spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+      continue;
+    }
 
     // Синхронизация меша
     const tm = vehicle.getRigidBody().getMotionState();
@@ -1280,6 +1805,7 @@ function updatePoliceAI(delta) {
     // С игроком
     if (carPos.distanceTo(carMesh.position) < 4) {
       collided = true;
+      collisionEffectTimer = 2.0;
     }
 
     // С другими полицейскими
@@ -1303,9 +1829,11 @@ function updatePoliceAI(delta) {
 function animate() {
   requestAnimationFrame(animate);
 
-  window.updateEditorCamera()
   const delta = clock.getDelta();
   physicsWorld.stepSimulation(delta, 10);
+  if (collisionEffectTimer > 0) {
+    collisionEffectTimer -= delta;
+  }
   //applyOffroadPenaltyByTiles(carBody, roadMeshes);
 
   // Improved idle stabilization
@@ -1343,6 +1871,13 @@ function animate() {
   let brakingForce = 0;
   let steering = 0;
 
+  if (!gameOver && mobileStick) {
+    brakingForce = 700 * Math.max(0, -mobileForce.forward);
+    steering = mobileForce.turn < 0 ? 0.3 
+      : mobileForce.turn > 0 ? -0.3 : 0;
+  }
+  
+
   // Reset brake
   vehicle.setBrake(0, 0);
   vehicle.setBrake(0, 1);
@@ -1350,22 +1885,32 @@ function animate() {
   vehicle.setBrake(0, 3);
 
   if (!gameOver) {
-    if (keysPressed.forward) {
+
       engineForce = 5800;
       brakingForce = 0;
-    }
     if (keysPressed.backward) {
-      engineForce = 0;
+      engineForce = 200;
       brakingForce = 700;
     }
-    if (keysPressed.left) steering = 0.5;
-    if (keysPressed.right) steering = -0.5;
+    if (isMobile) {
+      if (touchLeft) steering = 0.5;
+      if (touchRight) steering = -0.5;
+    } else {
+      if (keysPressed.left) steering = 0.5;
+      if (keysPressed.right) steering = -0.5;
+    }
   } else {
     engineForce = 0;
     brakingForce = 1000;
   }
 
-
+  let steerMod = 1.0;
+  let forceMod = 1.0;
+  
+  if (collisionEffectTimer > 0) {
+    steerMod = 0.3; // руль вялый
+    forceMod = 0.4; // тяга слабая
+  }
   vehicle.applyEngineForce(engineForce, 2);
   vehicle.applyEngineForce(engineForce, 3);
   vehicle.setBrake(brakingForce, 2);
@@ -1410,31 +1955,70 @@ function animate() {
 
 
   if (policeCars.length < 3) {
-    // spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-    // spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-    // spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
+    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
   }
   // HUD
   const linVel = carBody.getLinearVelocity();
   const speed = linVel.length() * 3.6; // m/s в km/h
-  const gear = engineForce < 0 ? 'R' : 'D';
-  hud.innerHTML = `Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h Gear: ${gear}`;
+
+  if (!gameOver) {
+    if (speed < 5) {
+      stuckTimer += delta;
+      if (stuckTimer > 2) {
+        gameOver = true;
+        arrestMessage.innerText = 'You Stalled!';
+        arrestMessage.style.display = 'block';
+        setTimeout(() => {
+          showGameOverOverlay(survivalTime, totalDistance);
+        }, 1500)
+  
+        vehicle.applyEngineForce(0, 2);
+        vehicle.applyEngineForce(0, 3);
+        vehicle.setBrake(1000, 2);
+        vehicle.setBrake(1000, 3);
+      }
+    } else {
+      stuckTimer = 0; // сбрасываем если едем нормально
+    }
+  }
+
+  hud.innerHTML = `Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h `;
   hud.innerHTML = `
-  Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h Gear: ${gear}<br>
+  Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h<br>
   Survived: ${survivalTime} s<br>
+  Distance: ${Math.floor(totalDistance)} m<br>
+
   Alert Level: ${'🔥'.repeat(alertLevel)}
 `;
   updatePoliceAI(delta);
   if (checkPlayerArrested()) {
     gameOver = true;
     arrestMessage.style.display = 'block';
-
+    setTimeout(() => {
+      showGameOverOverlay(survivalTime, totalDistance);
+    }, 500)
     // Отключим движение
     vehicle.applyEngineForce(0, 2);
     vehicle.applyEngineForce(0, 3);
     vehicle.setBrake(1000, 2);
     vehicle.setBrake(1000, 3);
   }
+  if (!gameOver) {
+    const currentPos = carMesh.position.clone();
+    const frameDist = currentPos.distanceTo(lastCarPos);
+    totalDistance += frameDist;
+    lastCarPos.copy(currentPos);
+  }
+  const carX = carMesh.position.x;
+const carZ = carMesh.position.z;
+
+const isInCamZone =
+  carX >= cameraZone.xMin && carX <= cameraZone.xMax &&
+  carZ >= cameraZone.zMin && carZ <= cameraZone.zMax;
+
+useFollowCamera = isInCamZone;
   renderer.render(scene, camera);
 
 
@@ -1445,3 +2029,115 @@ init();
 animate();
 
 
+
+
+const leaderboardOverlay = document.createElement('div');
+leaderboardOverlay.innerHTML = `
+  <div id="leaderboard-box">
+    <h2>🏁 Game Over</h2>
+    <p id="final-result">Distance, YYYm</p>
+    <input type="text" id="player-name" placeholder="Enter your name" maxlength="20" />
+    <button id="submit-score">Submit Score</button>
+    <h3>🏆 Leaderboard</h3>
+    <div id="leaderboard-list">Loading...</div>
+    <button id="restart-game">Play Again</button>
+  </div>
+`;
+Object.assign(leaderboardOverlay.style, {
+  position: 'absolute',
+  top: '0',
+  left: '0',
+  width: '100%',
+  height: '100%',
+  background: 'rgba(0,0,0,0.8)',
+  color: '#fff',
+  display: 'none',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 9999,
+  fontFamily: 'Orbitron, monospace'
+});
+document.body.appendChild(leaderboardOverlay);
+
+const restartBtn = leaderboardOverlay.querySelector('#restart-game');
+Object.assign(restartBtn.style, {
+  marginTop: '20px',
+  padding: '10px 20px',
+  fontSize: '16px',
+  fontWeight: 'bold',
+  borderRadius: '10px',
+  border: 'none',
+  background: '#44cc88',
+  color: '#fff',
+  cursor: 'pointer'
+});
+
+restartBtn.onclick = () => {
+  location.reload(); // заново загружает страницу и сбрасывает всё
+};
+
+const box = leaderboardOverlay.querySelector('#leaderboard-box');
+Object.assign(box.style, {
+  background: '#222',
+  padding: '30px',
+  borderRadius: '20px',
+  textAlign: 'center',
+  maxWidth: '400px',
+  width: '90%',
+  boxShadow: '0 0 20px rgba(255,255,255,0.2)'
+});
+
+let isShowing = false;
+function showGameOverOverlay(finalTime, finalDistance) {
+  if (isShowing) return;
+  isShowing = true;
+  leaderboardOverlay.style.display = 'flex';
+  const result = leaderboardOverlay.querySelector('#final-result');
+  result.textContent = `Distance ${Math.floor(finalDistance)}m`;
+
+  fetchLeaderboard().then(data => {
+    const html = data.map((e, i) =>
+      `<div>${i + 1}. <b>${e.name}</b> — ${e.time.toFixed(2)}s, ${Math.floor(e.distance)}m</div>`
+    ).join('');
+    leaderboardOverlay.querySelector('#leaderboard-list').innerHTML = html;
+  });
+
+  const nameInput = leaderboardOverlay.querySelector('#player-name');
+const submitBtn = leaderboardOverlay.querySelector('#submit-score');
+const leaderboardList = leaderboardOverlay.querySelector('#leaderboard-list');
+
+submitBtn.onclick = async () => {
+  const name = nameInput.value.trim() || 'Unnamed';
+
+  submitBtn.disabled = true;
+  submitBtn.innerText = 'Saving...';
+
+  await postScore(name, finalTime, finalDistance);
+
+  // Remove input + button
+  nameInput.remove();
+  submitBtn.remove();
+
+  leaderboardList.innerHTML = 'Updating...';
+  const data = await fetchLeaderboard();
+  leaderboardList.innerHTML = data.map((e, i) =>
+    `<div>${i + 1}. <b>${e.name}</b> — ${e.time.toFixed(2)}s, ${Math.floor(e.distance)}m</div>`
+  ).join('');
+};
+
+  
+}
+
+async function postScore(name, time, distance) {
+  await fetch('https://script.google.com/macros/s/AKfycbypD-7ncC549p6V99LT5-uOb4dnqifRWtqIRH36Dc6sY5j_9PThaJzieTwzK7vac9g/exec', {
+    method: 'POST',
+    body: JSON.stringify({ name, time, distance }),
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+async function fetchLeaderboard() {
+  const res = await fetch('https://script.google.com/macros/s/AKfycbypD-7ncC549p6V99LT5-uOb4dnqifRWtqIRH36Dc6sY5j_9PThaJzieTwzK7vac9g/exec');
+  const data = await res.json();
+  return data.sort((a, b) => b.distance - a.distance).slice(0, 10);
+}

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 
 import * as THREE from 'three';
 
-export function initLevelEditor({ scene, camera, ground, physicsWorld, createRoadSegment, createTree, createHouse, createClassicHouse, createModernHighrise, generateLevelFromObjects }) {
+export function initLevelEditor({ scene, camera, ground, physicsWorld=null, createRoadSegment, createTree, createHouse, createBarrier, createConcreteBarrierLine, createClassicHouse, createModernHighrise, generateLevelFromObjects }) {
     let editorMode = true;
     let selectedTool = 'road';
     let previewMesh = null;
@@ -15,6 +15,8 @@ export function initLevelEditor({ scene, camera, ground, physicsWorld, createRoa
     let currentRotation = 0;
     let currentWidth = 6;
     let currentLength = 20;
+    let currentBorderLength = 20;
+    let currentBorderStep = 2.2;
     let currentMarking = 'none';
     let currentTreeType = 0;
     let currentHouseType = 'house';
@@ -65,7 +67,12 @@ export function initLevelEditor({ scene, camera, ground, physicsWorld, createRoa
       <button onclick="window.setEditorTool('road')">🛣️ Road</button>
       <button onclick="window.setEditorTool('tree')">🌳 Tree</button>
       <button onclick="window.setEditorTool('house')">🏠 House</button>
+      <button onclick="window.setEditorTool('barrier')">🚧 Barrier</button>
+      <button onclick="window.setEditorTool('borderLine')">🧱 Border Line</button>
       <br><br>
+      Length: <input id="editor-border-length" type="number" value="20" style="width:50px;">
+Step: <input id="editor-border-step" type="number" value="2.2" style="width:50px;">
+
       Width: <input id="editor-width" type="number" value="6" style="width:40px;"> 
       Length: <input id="editor-length" type="number" value="20" style="width:50px;">
       <br>
@@ -186,7 +193,10 @@ Curb Side:
         const intersects = raycaster.intersectObjects(editorMeshes);
         if (intersects.length > 0) {
             const meshToRemove = intersects[0].object;
-            const root = meshToRemove.parent;
+            let root = meshToRemove;
+            while (root.parent && root.parent !== scene) {
+                root = root.parent;
+            }
             const index = editorMeshes.indexOf(root);
             if (index !== -1 && deleteMode) {
                 scene.remove(root);
@@ -203,6 +213,13 @@ Curb Side:
         const rot = previewMesh.rotation.y;
         const newObj = { type: selectedTool, position: pos, rotation: rot };
 
+        if (selectedTool === 'borderLine') {
+            newObj.type = 'borderLine';
+            newObj.start = pos;
+            newObj.rotation = rot;
+            newObj.length = currentBorderLength;
+            newObj.step = currentBorderStep;
+          }
         if (selectedTool === 'road') {
             newObj.width = currentWidth;
             newObj.length = currentLength;
@@ -250,6 +267,10 @@ Curb Side:
         currentScale = parseFloat(document.getElementById('editor-scale')?.value || '1');
         currentWithCurbs = document.getElementById('editor-curbs')?.checked ?? true;
         currentCurbSide = document.getElementById('editor-curb-side')?.value || 'both';
+
+        currentBorderLength = parseFloat(document.getElementById('editor-border-length')?.value || '20');
+        currentBorderStep = parseFloat(document.getElementById('editor-border-step')?.value || '2.2');
+
         console.log({currentCurbSide})
         if (selectedTool === 'road') {
             previewMesh = createRoadSegment({ marking: currentMarking, width: currentWidth, length: currentLength, withCurbs: currentWithCurbs, curbSide: currentCurbSide });
@@ -260,6 +281,12 @@ Curb Side:
             else if (currentHouseType === 'highrise') previewMesh = createModernHighrise();
             else previewMesh = createHouse();
         }
+        else if (selectedTool === 'borderLine') {
+            previewMesh = createConcreteBarrierLine([0, 0], currentRotation, currentBorderLength, currentBorderStep);
+          }
+        else if (selectedTool === 'barrier') {
+            previewMesh = createBarrier([0, 0], 10);
+          }
         const curbSideEl = document.getElementById('editor-curb-side');
         const curbSide = curbSideEl ? curbSideEl.value : 'both';
         if (previewMesh) {
@@ -299,6 +326,13 @@ Curb Side:
             mesh.rotation.y = rot;
             mesh.scale.set(scale, scale, scale);
         }
+        else if (obj.type === 'barrier') {
+            mesh = createBarrier(pos, rot, scale, physicsWorld);
+          }
+          else if (obj.type === 'borderLine') {
+            mesh = createConcreteBarrierLine(obj.start, obj.rotation ?? 0, obj.length ?? 10, obj.step ?? 2.2);
+          }
+          
         return mesh;
     }
 
@@ -307,3 +341,18 @@ Curb Side:
     // Экспорт функции камеры, чтобы использовать её в animate
     window.updateEditorCamera = updateEditorCamera;
 }
+
+  // initLevelEditor({
+  //   scene,
+  //   camera,
+  //   ground,
+  //   physicsWorld,
+  //   createRoadSegment,
+  //   createTree,
+  //   createHouse,
+  //   createClassicHouse,
+  //   createModernHighrise,
+  //   createBarrier,
+  //   generateLevelFromObjects,
+  //   createConcreteBarrierLine,
+  // });
