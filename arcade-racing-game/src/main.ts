@@ -204,7 +204,7 @@ function createConcreteBarrierMesh() {
 function createConcreteBarrierLine(start: [number, number], rotation: number, length: number, step = 2.2, physicsWorld = null) {
   const group = new THREE.Group();
   const count = Math.floor(length / step);
-  const shape = new Ammo.btBoxShape(new Ammo.btVector3(1, 0.6, 0.25));
+  const shape = new Ammo.btBoxShape(new Ammo.btVector3(1, 10, 1));
 
   for (let i = 0; i < count; i++) {
     const offset = i * step;
@@ -1593,7 +1593,6 @@ function init() {
         zIndex: 10,
         userSelect: 'none',
         
-        userSelect: 'none',
         webkitUserSelect: 'none',
         touchAction: 'none',
         webkitTouchCallout: 'none',
