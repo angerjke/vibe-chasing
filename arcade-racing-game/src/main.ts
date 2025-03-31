@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
 import { initLevelEditor } from './edit';
 import { level } from './level';
+import { ParticleEmitter, ParticleSystem } from './ParticleSystem';
+
 let stuckTimer = 0;
 let collisionEffectTimer = 0;
 let totalDistance = -55;
@@ -12,6 +14,7 @@ let mobileStick = null;
 let mobileForce = { brake: 0, turn: 0 };
 let touchLeft = false;
 let touchRight = false;
+
 
 
 const localBestKey = 'chase_best_distance';
@@ -1421,7 +1424,7 @@ function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
       smoothedDir: null,
       steeringSmoothed: 0,
       maxSpeed: 200 + Math.random() * 20,
-      enginePower: 2300 + Math.random() * 1000,
+      enginePower: 3300 + Math.random() * 1000,
       behaviorOffset: new THREE.Vector3(
         (Math.random() - 0.5) * 10,
         0,
@@ -1533,7 +1536,7 @@ function generateBuildingsFromMap(map, scene) {
     }
   }
 }
-
+let particleSystem
 function init() {
   fetchLeaderboard().then(data => {
     leaderboard = data;
@@ -1550,6 +1553,8 @@ function init() {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xffcc99);
   scene.fog = new THREE.Fog(0xffcc99, 30, 250);
+  particleSystem = new ParticleSystem();
+
 
   const zonePlane = new THREE.Mesh(
     new THREE.PlaneGeometry(cameraZone.xMax - cameraZone.xMin, cameraZone.zMax - cameraZone.zMin),
@@ -1824,6 +1829,20 @@ function despawnPoliceCar(car) {
 }
 
 
+function startSmokeEffectAt(car) {
+  const emitter = new ParticleEmitter(car.mesh.position.clone());
+  particleSystem.addEmitter(emitter, scene);
+
+  setTimeout(() => {
+    emitter.stop();
+    const index = particleSystem.emitters.indexOf(emitter);
+    if (index !== -1) particleSystem.emitters.splice(index, 1);
+  }, 1000);
+
+}
+
+
+
 function updatePoliceAI(delta) {
   if (gameOver) return;
   for (let car of policeCars) {
@@ -1948,15 +1967,47 @@ function updatePoliceAI(delta) {
     for (let other of policeCars) {
       if (other === car) continue;
       const otherPos = other.mesh.position.clone();
-      if (carPos.distanceTo(otherPos) < 4) {
-        setTimeout(() => {
-          explodePoliceCar(car);
-          explodePoliceCar(other);
-        }, 222);
-        break;
+      if (carPos.distanceTo(otherPos) < 4 && !car.crashed) {
+        car.crashed = true;
+        other.crashed = true;
+        car.crashTimer = 2.0;
+        other.crashTimer = 2.0;
+      
+        // Визуально: наклонить машину/встряхнуть
+        other.mesh.rotation.z = Math.random() * 0.2 - 0.1;
+      
+        // Добавим дым
+        //startSmokeEffectAt(car);
+        //startSmokeEffectAt(other);
+      
+        // Отключим управление и остановим
+        vehicle.setBrake(1000, 0);
+        vehicle.setBrake(1000, 1);
+        vehicle.setBrake(1000, 2);
+        vehicle.setBrake(1000, 3);
+        vehicle.applyEngineForce(0, 2);
+        vehicle.applyEngineForce(0, 3);
+
+        other.vehicle.setBrake(1000, 0);
+        other.vehicle.setBrake(1000, 1);
+        other.vehicle.setBrake(1000, 2);
+        other.vehicle.setBrake(1000, 3);
+        other.vehicle.applyEngineForce(0, 2);
+        other.vehicle.applyEngineForce(0, 3);
       }
     }
+    if (car.crashed) {
+      car.mesh.rotation.x += delta * 5 * (Math.random() - 0.5);
+      car.mesh.rotation.y += delta * 5 * (Math.random() - 0.5);
+      car.mesh.rotation.z += delta * 5 * (Math.random() - 0.5);
+      car.crashTimer -= delta;
+      if (car.crashTimer <= 0) {
+        explodePoliceCar(car);
+      }
+      continue; // пропускаем AI
+    }
   }
+  
 }
 
 
@@ -1970,7 +2021,7 @@ function animate() {
   if (collisionEffectTimer > 0) {
     collisionEffectTimer -= delta;
   }
-  //applyOffroadPenaltyByTiles(carBody, roadMeshes);
+
 
   // Improved idle stabilization
   if (!keysPressed.forward && !keysPressed.backward) {
@@ -2089,6 +2140,7 @@ function animate() {
     light.material.emissive.setHex(keysPressed.backward ? 0xff0000 : 0x000000);
   }
 
+ 
 
   if (policeCars.length < 3) {
     spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
@@ -2156,9 +2208,7 @@ function animate() {
 
   useFollowCamera = isInCamZone;
   renderer.render(scene, camera);
-
-
-
+  //particleSystem.update(delta, scene);
 }
 
 init();
