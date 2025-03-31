@@ -245,6 +245,7 @@ function createConcreteBarrierLine(start: [number, number], rotation: number, le
   return group;
 }
 
+const destructibleBarriers: THREE.Group[] = [];
 
 
 function createBarrier(position: [number, number], rotation = 0, scale = 1, physicsWorld = null) {
@@ -307,7 +308,9 @@ function createBarrier(position: [number, number], rotation = 0, scale = 1, phys
     const body = new Ammo.btRigidBody(rbInfo);
     physicsWorld.addRigidBody(body);
   }
-
+  group.userData.isDestructible = true;
+  group.userData.isBarrier = true;
+  
   return group;
 }
 
@@ -496,7 +499,8 @@ function isPointVisibleToCamera(point, camera) {
 function generateLevelFromObjects(objects, scene, physicsWorld) {
   for (const obj of objects) {
     let mesh = null;
-
+    if (mesh?.userData?.isDestructible)
+      destructibleBarriers.push(mesh);
     if (obj.type === 'road') {
       mesh = createRoadSegment({
         type: 'straight',
@@ -1565,6 +1569,15 @@ function init() {
   camera.lookAt(0, 0, 0);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
+  window.addEventListener('resize', () => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+  
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  
+    renderer.setSize(width, height);
+  });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
