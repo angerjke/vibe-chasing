@@ -3,7 +3,6 @@
 import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
 import { initLevelEditor } from './edit';
-import nipplejs from 'nipplejs';
 import { level } from './level';
 let stuckTimer = 0;
 let collisionEffectTimer = 0;
@@ -97,7 +96,7 @@ car.add(bumperRear);
 
   // --- Мигалка
   const lightBarBase = new THREE.Mesh(new THREE.BoxGeometry(1, 0.2, 0.4), blackMat);
-  lightBarBase.position.set(0, 0.92, 0);
+  lightBarBase.position.set(0, 0.91, 0);
   car.add(lightBarBase);
 
 
