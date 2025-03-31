@@ -14,6 +14,8 @@ let mobileForce = { brake: 0, turn: 0 };
 let touchLeft = false;
 let touchRight = false;
 
+let leaderboard = [];
+
 const redLightMat = new THREE.MeshStandardMaterial({
   color: 0xff0000,
   emissive: 0x000000,
@@ -1296,6 +1298,7 @@ function explodePoliceCar(car) {
 }
 
 function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
+  if (gameOver) return;
   const maxAttempts = 30;
   const playerPos = playerMesh.position.clone();
 
@@ -1519,6 +1522,10 @@ function generateBuildingsFromMap(map, scene) {
 }
 
 function init() {
+  fetchLeaderboard().then(data => {
+    leaderboard = data;
+  });
+
   survivalTimerInterval = setInterval(() => {
     if (!gameOver) {
       survivalTime++;
@@ -1792,6 +1799,7 @@ function despawnPoliceCar(car) {
 
 
 function updatePoliceAI(delta) {
+  if (gameOver) return;
   for (let car of policeCars) {
     const { mesh, vehicle, body } = car;
 
@@ -2068,13 +2076,13 @@ function animate() {
   if (!gameOver) {
     if (speed < 5) {
       stuckTimer += delta;
-      if (stuckTimer > 2) {
+      if (stuckTimer > 1) {
         gameOver = true;
-        arrestMessage.innerText = 'You Stalled!';
+        arrestMessage.innerText = 'Busted!';
         arrestMessage.style.display = 'block';
         setTimeout(() => {
           showGameOverOverlay(survivalTime, totalDistance);
-        }, 1500)
+        }, 1000)
   
         vehicle.applyEngineForce(0, 2);
         vehicle.applyEngineForce(0, 3);
@@ -2197,12 +2205,21 @@ function showGameOverOverlay(finalTime, finalDistance) {
   const result = leaderboardOverlay.querySelector('#final-result');
   result.textContent = `Distance ${Math.floor(finalDistance)}m`;
 
-  fetchLeaderboard().then(data => {
-    const html = data.filter(e => !!e.name && !!e.distance).map((e, i) =>
-      `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)}m total distance</div>`
+  if (leaderboard.length > 0) {
+    const html = leaderboard.filter(e => !!e.name && !!e.distance).map((e, i) =>
+      `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)} meters</div>`
     ).join('');
     leaderboardOverlay.querySelector('#leaderboard-list').innerHTML = html;
-  });
+  } else {
+    fetchLeaderboard().then(data => {
+      const html = data.filter(e => !!e.name && !!e.distance).map((e, i) =>
+        `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)} meters</div>`
+      ).join('');
+      leaderboardOverlay.querySelector('#leaderboard-list').innerHTML = html;
+    });
+  }
+
+ 
 
   const nameInput = leaderboardOverlay.querySelector('#player-name');
 const submitBtn = leaderboardOverlay.querySelector('#submit-score');
@@ -2223,9 +2240,9 @@ submitBtn.onclick = async () => {
   leaderboardList.innerHTML = 'Updating...';
   const data = await fetchLeaderboard();
   leaderboardList.innerHTML = data
-  .filter(e => !!e.name && !!e.distanc)
+  .filter(e => !!e.name && !!e.distance)
   .map((e, i) =>
-    `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)}m total distance</div>`
+    `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)} meters</div>`
   ).join('');
 };
 
