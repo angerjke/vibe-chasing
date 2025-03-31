@@ -106,18 +106,21 @@ car.add(bumperRear);
   car.add(window);
 
   // --- Колёса
-  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-  const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
-  for (const [x, z] of [
-    [-0.9, -1.5],
-    [0.9, -1.5],
-    [-0.9, 1.5],
-    [0.9, 1.5]
+  const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.3, 6);
+  const rimGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.32, 6);
+  for (let [x, z] of [
+    [-0.95, -1.6], [0.95, -1.6],
+    [-0.95, 1.6], [0.95, 1.6]
   ]) {
-    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+    const wheel = new THREE.Mesh(wheelGeo, blackMat);
     wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(x, 0.2, z);
+    wheel.position.set(x, 0.3, z);
     car.add(wheel);
+
+    const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ color: 0xbbbbbb }));
+    rim.rotation.z = Math.PI / 2;
+    rim.position.set(x, 0.3, z);
+    car.add(rim);
   }
 
   // --- Передние огни
@@ -968,6 +971,111 @@ function createDefCar(carColor, taillights) {
   return carMesh;
 }
 
+function createDefCarFromReference(bodyColor: THREE.Color, taillights: THREE.Mesh[]) {
+  const car = new THREE.Group();
+
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  const windowMat = new THREE.MeshStandardMaterial({ color: 0x66ccff });
+  const headlightMat = new THREE.MeshStandardMaterial({ color: 0xffee88 });
+  const brakeMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor });
+
+  // ==== Нижняя часть ====
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2, 0.3, 4.4), darkMat);
+  base.position.y = 0.15;
+  car.add(base);
+
+  // ==== Корпус ====
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 4.2), bodyMat);
+  body.position.y = 0.75;
+  car.add(body);
+
+  // ==== Кабина (стеклянная часть) ====
+  const cabin = createTrapezoidCabin(0x66ccff);
+  cabin.scale.set(0.92, 0.8, 1);
+  cabin.position.y = 1.1;
+  car.add(cabin);
+
+  // ==== Верх крыши ====
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(1.1, 0.1, 1.9),
+    bodyMat
+  );
+  roof.position.set(0, 1.72, 0);
+  car.add(roof);
+
+  // ==== Спойлер ====
+  const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.3), bodyMat);
+  spoiler.position.set(0, 1.3, 2);
+  car.add(spoiler);
+
+  const spoilerSupport1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.1), bodyMat);
+  spoilerSupport1.position.set(-0.4, 1.15, 1.95);
+  car.add(spoilerSupport1);
+
+  const spoilerSupport2 = spoilerSupport1.clone();
+  spoilerSupport2.position.x *= -1;
+  car.add(spoilerSupport2);
+
+  // ==== Зеркала ====
+  const mirrorGeo = new THREE.BoxGeometry(0.1, 0.2, 0.3);
+  const mirrorL = new THREE.Mesh(mirrorGeo, bodyMat);
+  mirrorL.position.set(-1.05, 1.0, -1);
+  car.add(mirrorL);
+
+  const mirrorR = mirrorL.clone();
+  mirrorR.position.x *= -1;
+  car.add(mirrorR);
+
+  // ==== Фары передние ====
+  for (let x of [-0.75, 0.75]) {
+    const headlight = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.05), headlightMat);
+    headlight.position.set(x, 0.9, -2.25);
+    car.add(headlight);
+  }
+
+  // ==== Радиатор ====
+  const grill = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.05), darkMat);
+  grill.position.set(0, 0.9, -2.25);
+  car.add(grill);
+
+  // ==== Фары задние ====
+  for (let x of [-0.75, 0.75]) {
+    const brake = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.05), brakeMat.clone());
+    brake.position.set(x, 0.9, 2.25);
+    car.add(brake);
+    taillights.push(brake);
+  }
+
+  // ==== Выхлоп ====
+  const exhaust = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.07, 0.07, 0.2, 6),
+    darkMat
+  );
+  exhaust.rotation.z = Math.PI / 2;
+  exhaust.position.set(0.8, 0.3, 2.3);
+  car.add(exhaust);
+
+  // ==== Колёса ====
+  const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.3, 6);
+  const rimGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.32, 6);
+  for (let [x, z] of [
+    [-0.95, -1.6], [0.95, -1.6],
+    [-0.95, 1.6], [0.95, 1.6]
+  ]) {
+    const wheel = new THREE.Mesh(wheelGeo, darkMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(x, 0.3, z);
+    car.add(wheel);
+
+    const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ color: 0xbbbbbb }));
+    rim.rotation.z = Math.PI / 2;
+    rim.position.set(x, 0.3, z);
+    car.add(rim);
+  }
+
+  return car;
+}
 
 
 function createTestCar(carColor, taillights) {
@@ -1005,7 +1113,7 @@ function createTestCar(carColor, taillights) {
     new THREE.BoxGeometry(1.24, 0.1, 1.89),
     new THREE.MeshStandardMaterial({ color: mainColor })
   );
-  roof.position.set(0, 0.76, 0);
+  roof.position.set(2, 3.9, 2);
   cabin.add(roof);
 
   // Полоски на капоте
@@ -1148,7 +1256,7 @@ function checkPlayerArrested() {
 }
 
 const keysPressed = { forward: false, backward: false, left: false, right: false, camToggle: false };
-let useFollowCamera = false;
+let useFollowCamera = true;
 let taillights = [];
 
 function explodePoliceCar(car) {
@@ -1587,7 +1695,7 @@ function init() {
   physicsWorld.addRigidBody(groundBody);
 
 
-  carMesh = createTestCar(carColor, taillights);
+  carMesh = createDefCarFromReference(carColor, taillights);
   carMesh.position.set(0, 2, -55);
   scene.add(carMesh);
 
@@ -2131,11 +2239,11 @@ async function postScore(name, time, distance) {
     distance: distance.toFixed(0)
   });
   
-              await fetch(`https://script.google.com/macros/s/AKfycbzNgtDSDVNbauWAKf7sA4GIh-Zei6bm-00hYHoIACp3La8RLt2gXngctJm4ZbeFmr_Q/exec?${params.toString()}`)
+              await fetch(`https://script.google.com/macros/s/AKfycbzckm9jg6G9O1wfQY1WAEg7TMDnAMVLuMMqgkJbyD4MaySnR52Z6gHA02FMTfelIvWa/exec?${params.toString()}`)
 }
 
 async function fetchLeaderboard() {
-  const res = await fetch('https://script.google.com/macros/s/AKfycbzNgtDSDVNbauWAKf7sA4GIh-Zei6bm-00hYHoIACp3La8RLt2gXngctJm4ZbeFmr_Q/exec');
+  const res = await fetch('https://script.google.com/macros/s/AKfycbzckm9jg6G9O1wfQY1WAEg7TMDnAMVLuMMqgkJbyD4MaySnR52Z6gHA02FMTfelIvWa/exec');
   const data = await res.json();
   return data.sort((a, b) => b.distance - a.distance).slice(0, 10);
 }
