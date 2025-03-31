@@ -1997,9 +1997,8 @@ function updatePoliceAI(delta) {
       }
     }
     if (car.crashed) {
-      car.mesh.rotation.x += delta * 5 * (Math.random() - 0.5);
-      car.mesh.rotation.y += delta * 5 * (Math.random() - 0.5);
-      car.mesh.rotation.z += delta * 5 * (Math.random() - 0.5);
+      car.mesh.rotation.x += delta * 2 * (Math.random() - 0.5);
+      car.mesh.rotation.z += delta * -2 * (Math.random() - 0.5);
       car.crashTimer -= delta;
       if (car.crashTimer <= 0) {
         explodePoliceCar(car);
