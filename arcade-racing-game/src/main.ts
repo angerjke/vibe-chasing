@@ -13,6 +13,10 @@ let mobileForce = { brake: 0, turn: 0 };
 let touchLeft = false;
 let touchRight = false;
 
+
+const localBestKey = 'chase_best_distance';
+const localBest = parseFloat(localStorage.getItem(localBestKey) || '0');
+
 let leaderboard = [];
 
 const redLightMat = new THREE.MeshStandardMaterial({
@@ -43,40 +47,40 @@ function createPoliceCar(colorOverride = null) {
   body.position.y = 0.3;
   car.add(body);
   const hood = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 0.6, 1.2),
-  blackMat
-);
-hood.position.set(0, 0.3, -1.4);
-car.add(hood);
+    new THREE.BoxGeometry(2, 0.6, 1.2),
+    blackMat
+  );
+  hood.position.set(0, 0.3, -1.4);
+  car.add(hood);
 
-// Багажник (задняя часть)
-const trunk = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 0.6, 1),
-  blackMat
-);
-trunk.position.set(0, 0.3, 1.4);
-car.add(trunk);
+  // Багажник (задняя часть)
+  const trunk = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 0.6, 1),
+    blackMat
+  );
+  trunk.position.set(0, 0.3, 1.4);
+  car.add(trunk);
 
-// Двери/бока
-const sidePanel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 2), blackMat);
-for (let x of [-1.1, 1.1]) {
-  const panel = sidePanel.clone();
-  panel.position.set(x, 0.3, 0);
-  car.add(panel);
-}
+  // Двери/бока
+  const sidePanel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 2), blackMat);
+  for (let x of [-1.1, 1.1]) {
+    const panel = sidePanel.clone();
+    panel.position.set(x, 0.3, 0);
+    car.add(panel);
+  }
 
-// Передний бампер
-const bumperFront = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 0.3, 0.4),
-  blackMat
-);
-bumperFront.position.set(0, 0.15, -2.2);
-car.add(bumperFront);
+  // Передний бампер
+  const bumperFront = new THREE.Mesh(
+    new THREE.BoxGeometry(2, 0.3, 0.4),
+    blackMat
+  );
+  bumperFront.position.set(0, 0.15, -2.2);
+  car.add(bumperFront);
 
-// Задний бампер
-const bumperRear = bumperFront.clone();
-bumperRear.position.z = 2.2;
-car.add(bumperRear);
+  // Задний бампер
+  const bumperRear = bumperFront.clone();
+  bumperRear.position.z = 2.2;
+  car.add(bumperRear);
 
   // --- Тёмные боковые панели
   const side = new THREE.Mesh(new THREE.BoxGeometry(2, 0.6, 0.1), blackMat);
@@ -141,12 +145,12 @@ car.add(bumperRear);
   car.add(brakeLight2);
 
   const lightLeft = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.4), blueLightMat);
-lightLeft.position.set(-0.25, 0.92, 0);
-car.add(lightLeft);
+  lightLeft.position.set(-0.25, 0.92, 0);
+  car.add(lightLeft);
 
-const lightRight = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.4), redLightMat);
-lightRight.position.set(0.25, 0.92, 0);
-car.add(lightRight);
+  const lightRight = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.4), redLightMat);
+  lightRight.position.set(0.25, 0.92, 0);
+  car.add(lightRight);
 
   return car;
 }
@@ -310,7 +314,7 @@ function createBarrier(position: [number, number], rotation = 0, scale = 1, phys
   }
   group.userData.isDestructible = true;
   group.userData.isBarrier = true;
-  
+
   return group;
 }
 
@@ -1265,7 +1269,7 @@ let useFollowCamera = true;
 let taillights = [];
 
 function explodePoliceCar(car) {
-  if(gameOver) return;
+  if (gameOver) return;
   const { mesh, body, vehicle } = car;
 
   // Визуальный взрыв — создаём яркий вспышечный шар
@@ -1351,12 +1355,12 @@ function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
 
     mesh.position.copy(spawnPos);
     let lightsOn = false;
-setInterval(() => {
-  lightsOn = !lightsOn;
+    setInterval(() => {
+      lightsOn = !lightsOn;
 
-  redLightMat.emissive.setHex(lightsOn ? 0xff0000 : 0x000000);
-  blueLightMat.emissive.setHex(lightsOn ? 0x000000 : 0x0000ff);
-}, 300);
+      redLightMat.emissive.setHex(lightsOn ? 0xff0000 : 0x000000);
+      blueLightMat.emissive.setHex(lightsOn ? 0x000000 : 0x0000ff);
+    }, 300);
     scene.add(mesh);
 
     // Ammo физика:
@@ -1411,6 +1415,8 @@ setInterval(() => {
 
     policeCars.push({
       stuckTimer: 0,
+      crashed: false,
+      crashTimer: 0,
       mesh, body, taillights, vehicle,
       smoothedDir: null,
       steeringSmoothed: 0,
@@ -1549,17 +1555,17 @@ function init() {
     new THREE.PlaneGeometry(cameraZone.xMax - cameraZone.xMin, cameraZone.zMax - cameraZone.zMin),
     new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
   );
-  
+
   zonePlane.rotation.x = -Math.PI / 2;
   zonePlane.position.set(
     (cameraZone.xMin + cameraZone.xMax) / 2,
     0.1,
     (cameraZone.zMin + cameraZone.zMax) / 2
   );
-  
+
   // debug zone scene.add(zonePlane);
-  
-  
+
+
 
 
 
@@ -1572,10 +1578,10 @@ function init() {
   window.addEventListener('resize', () => {
     const width = window.innerWidth;
     const height = window.innerHeight;
-  
+
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-  
+
     renderer.setSize(width, height);
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1585,10 +1591,10 @@ function init() {
   if (isMobile) {
     const leftZone = document.createElement('div');
     const rightZone = document.createElement('div');
-  
+
     leftZone.innerText = '⟵ TURN LEFT';
     rightZone.innerText = 'TURN RIGHT ⟶';
-  
+
     for (const zone of [leftZone, rightZone]) {
       Object.assign(zone.style, {
         position: 'absolute',
@@ -1604,18 +1610,18 @@ function init() {
         pointerEvents: 'none', // не мешает тапам
         zIndex: 10,
         userSelect: 'none',
-        
+
         webkitUserSelect: 'none',
         touchAction: 'none',
         webkitTouchCallout: 'none',
       });
     }
-  
+
     leftZone.style.left = '0';
     leftZone.style.background = 'rgba(0,0,0,0.1)';
     rightZone.style.right = '0';
     rightZone.style.background = 'rgba(0,0,0,0.1)';
-  
+
     document.body.appendChild(leftZone);
     document.body.appendChild(rightZone);
 
@@ -1624,7 +1630,7 @@ function init() {
       rightZone.remove();
     }, 10000);
   }
-  
+
 
   // Ammo physics world
   let collisionCfg = new Ammo.btDefaultCollisionConfiguration();
@@ -1909,7 +1915,7 @@ function updatePoliceAI(delta) {
     } else {
       car.stuckTimer = 0;
     }
-    
+
     if (car.stuckTimer > 1.0) {
       despawnPoliceCar(car);
       spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
@@ -2003,10 +2009,10 @@ function animate() {
 
   if (!gameOver && mobileStick) {
     brakingForce = 700 * Math.max(0, -mobileForce.forward);
-    steering = mobileForce.turn < 0 ? 0.3 
+    steering = mobileForce.turn < 0 ? 0.3
       : mobileForce.turn > 0 ? -0.3 : 0;
   }
-  
+
 
   // Reset brake
   vehicle.setBrake(0, 0);
@@ -2016,8 +2022,8 @@ function animate() {
 
   if (!gameOver) {
 
-      engineForce = 5800;
-      brakingForce = 0;
+    engineForce = 5800;
+    brakingForce = 0;
     if (keysPressed.backward) {
       engineForce = 200;
       brakingForce = 700;
@@ -2036,7 +2042,7 @@ function animate() {
 
   let steerMod = 1.0;
   let forceMod = 1.0;
-  
+
   if (collisionEffectTimer > 0) {
     steerMod = 0.3; // руль вялый
     forceMod = 0.4; // тяга слабая
@@ -2103,7 +2109,7 @@ function animate() {
         setTimeout(() => {
           showGameOverOverlay(survivalTime, totalDistance);
         }, 1000)
-  
+
         vehicle.applyEngineForce(0, 2);
         vehicle.applyEngineForce(0, 3);
         vehicle.setBrake(1000, 2);
@@ -2142,13 +2148,13 @@ function animate() {
     lastCarPos.copy(currentPos);
   }
   const carX = carMesh.position.x;
-const carZ = carMesh.position.z;
+  const carZ = carMesh.position.z;
 
-const isInCamZone =
-  carX >= cameraZone.xMin && carX <= cameraZone.xMax &&
-  carZ >= cameraZone.zMin && carZ <= cameraZone.zMax;
+  const isInCamZone =
+    carX >= cameraZone.xMin && carX <= cameraZone.xMax &&
+    carZ >= cameraZone.zMin && carZ <= cameraZone.zMax;
 
-useFollowCamera = isInCamZone;
+  useFollowCamera = isInCamZone;
   renderer.render(scene, camera);
 
 
@@ -2216,7 +2222,38 @@ Object.assign(box.style, {
   width: '90%',
   boxShadow: '0 0 20px rgba(255,255,255,0.2)'
 });
+function triggerFirework() {
+  for (let i = 0; i < 72; i++) {
+    const spark = document.createElement('div');
+    Object.assign(spark.style, {
+      position: 'absolute',
+      width: '6px',
+      height: '6px',
+      background: `hsl(${Math.random() * 360}, 100%, 60%)`,
+      borderRadius: '50%',
+      left: '50%',
+      top: '50%',
+      pointerEvents: 'none',
+      transform: 'translate(-50%, -50%)',
+      zIndex: 10000,
+      opacity: '1',
+      transition: 'all 1s ease-out'
+    });
+    document.body.appendChild(spark);
 
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 100 + Math.random() * 100;
+    const dx = Math.cos(angle) * radius;
+    const dy = Math.sin(angle) * radius;
+
+    requestAnimationFrame(() => {
+      spark.style.transform = `translate(${dx}px, ${dy}px)`;
+      spark.style.opacity = '0';
+    });
+
+    setTimeout(() => spark.remove(), 1000);
+  }
+}
 let isShowing = false;
 function showGameOverOverlay(finalTime, finalDistance) {
   if (isShowing) return;
@@ -2224,6 +2261,36 @@ function showGameOverOverlay(finalTime, finalDistance) {
   leaderboardOverlay.style.display = 'flex';
   const result = leaderboardOverlay.querySelector('#final-result');
   result.textContent = `Distance: ${Math.floor(finalDistance)}m`;
+  const specialMessage = document.createElement('div');
+  specialMessage.style.marginTop = '10px';
+  specialMessage.style.fontSize = '20px';
+  specialMessage.style.color = '#ffcc00';
+  specialMessage.style.fontWeight = 'bold';
+
+const nameInput = leaderboardOverlay.querySelector('#player-name');
+  const submitBtn = leaderboardOverlay.querySelector('#submit-score');
+  const leaderboardList = leaderboardOverlay.querySelector('#leaderboard-list');
+
+  let isSpecial = false;
+
+  if (finalDistance > localBest) {
+    specialMessage.innerText = '🔥 New Personal Best!';
+    localStorage.setItem(localBestKey, finalDistance.toFixed(0));
+    isSpecial = true;
+  }
+
+  const index = leaderboard.findIndex(e => e.name === nameInput.value.trim());
+  if (index >= 0 && index < 3) {
+    specialMessage.innerText = '🥇 Top 3 Finish!';
+    isSpecial = true;
+  }
+
+  if (isSpecial) {
+    result.after(specialMessage);
+    setTimeout(() => {
+      triggerFirework();
+    }, 500);
+  }
 
   if (leaderboard.length > 0) {
     const html = leaderboard.filter(e => !!e.name && !!e.distance).map((e, i) =>
@@ -2239,34 +2306,30 @@ function showGameOverOverlay(finalTime, finalDistance) {
     });
   }
 
- 
 
-  const nameInput = leaderboardOverlay.querySelector('#player-name');
-const submitBtn = leaderboardOverlay.querySelector('#submit-score');
-const leaderboardList = leaderboardOverlay.querySelector('#leaderboard-list');
 
-submitBtn.onclick = async () => {
-  const name = nameInput.value.trim() || 'Unnamed';
+  submitBtn.onclick = async () => {
+    const name = nameInput.value.trim() || 'Unnamed';
 
-  submitBtn.disabled = true;
-  submitBtn.innerText = 'Saving...';
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Saving...';
 
-  await postScore(name, finalTime, finalDistance);
+    await postScore(name, finalTime, finalDistance);
 
-  // Remove input + button
-  nameInput.remove();
-  submitBtn.remove();
+    // Remove input + button
+    nameInput.remove();
+    submitBtn.remove();
 
-  leaderboardList.innerHTML = 'Updating...';
-  const data = await fetchLeaderboard();
-  leaderboardList.innerHTML = data
-  .filter(e => !!e.name && !!e.distance)
-  .map((e, i) =>
-    `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)} meters</div>`
-  ).join('');
-};
+    leaderboardList.innerHTML = 'Updating...';
+    const data = await fetchLeaderboard();
+    leaderboardList.innerHTML = data
+      .filter(e => !!e.name && !!e.distance)
+      .map((e, i) =>
+        `<div>${i + 1}. <b>${e.name}</b> — ${Math.floor(e.distance)} meters</div>`
+      ).join('');
+  };
 
-  
+
 }
 
 async function postScore(name, time, distance) {
@@ -2275,8 +2338,8 @@ async function postScore(name, time, distance) {
     time: time.toFixed(2),
     distance: distance.toFixed(0)
   });
-  
-              await fetch(`https://script.google.com/macros/s/AKfycbzckm9jg6G9O1wfQY1WAEg7TMDnAMVLuMMqgkJbyD4MaySnR52Z6gHA02FMTfelIvWa/exec?${params.toString()}`)
+
+  await fetch(`https://script.google.com/macros/s/AKfycbzckm9jg6G9O1wfQY1WAEg7TMDnAMVLuMMqgkJbyD4MaySnR52Z6gHA02FMTfelIvWa/exec?${params.toString()}`)
 }
 
 async function fetchLeaderboard() {
