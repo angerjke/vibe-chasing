@@ -1436,7 +1436,11 @@ hud.style.color = '#ffffff';
 hud.style.fontFamily = 'Orbitron, monospace';
 hud.style.fontSize = '18px';
 hud.style.pointerEvents = 'none';
-hud.innerHTML = 'Speed: 0 km/h Gear: D';
+hud.style.userSelect = 'none';
+hud.style.webkitUserSelect = 'none';
+hud.style.touchAction = 'none';
+hud.style.webkitTouchCallout = 'none';
+hud.innerHTML = 'Speed: 0 km/h';
 document.body.appendChild(hud);
 let roadMeshes = []
 let obstacleMeshes = [];
@@ -1587,7 +1591,12 @@ function init() {
         fontFamily: 'Orbitron, monospace',
         pointerEvents: 'none', // не мешает тапам
         zIndex: 10,
-        userSelect: 'none'
+        userSelect: 'none',
+        
+        userSelect: 'none',
+        webkitUserSelect: 'none',
+        touchAction: 'none',
+        webkitTouchCallout: 'none',
       });
     }
   
@@ -2203,7 +2212,7 @@ function showGameOverOverlay(finalTime, finalDistance) {
   isShowing = true;
   leaderboardOverlay.style.display = 'flex';
   const result = leaderboardOverlay.querySelector('#final-result');
-  result.textContent = `Distance ${Math.floor(finalDistance)}m`;
+  result.textContent = `Distance: ${Math.floor(finalDistance)}m`;
 
   if (leaderboard.length > 0) {
     const html = leaderboard.filter(e => !!e.name && !!e.distance).map((e, i) =>
@@ -2264,3 +2273,8 @@ async function fetchLeaderboard() {
   const data = await res.json();
   return data.sort((a, b) => b.distance - a.distance).slice(0, 10);
 }
+
+document.documentElement.style.webkitUserSelect = 'none';
+document.body.style.webkitUserSelect = 'none';
+document.body.style.webkitTouchCallout = 'none';
+document.body.style.touchAction = 'manipulation';

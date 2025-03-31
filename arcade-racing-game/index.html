@@ -2,10 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Vibe Chasing</title>
   </head>
-  <style>body{overflow: hidden;}</style>
+  <style>
+  body{
+    overflow: hidden;
+  }
+  html, body {
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation; 
+  }
+  canvas {
+    touch-action: none;
+    webkitTouchCallout: none;
+    webkitUserSelect: none;
+    userSelect: none;
+  }
+  </style>
   <body>
     <div id="game-container"></div>
     <a target="_blank" href="https://jam.pieter.com" style="font-family: 'system-ui', sans-serif; position: fixed; bottom: -1px; right: -1px; padding: 7px; font-size: 14px; font-weight: bold; background: #fff; color: #000; text-decoration: none; z-index: 10; border-top-left-radius: 12px; z-index: 10000; border: 1px solid #fff;">🕹️ Vibe Jam 2025</a>
