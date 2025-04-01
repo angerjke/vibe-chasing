@@ -1342,24 +1342,8 @@ function explodePoliceCar(car) {
   const { mesh, body, vehicle } = car;
 
   // Визуальный взрыв — создаём яркий вспышечный шар
-  const explosion = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0xff4400, emissive: 0xff0000 })
-  );
-  explosion.position.copy(mesh.position);
-  scene.add(explosion);
+  createExplosionEffect(mesh.position.clone());
 
-  // Анимация исчезновения взрыва
-  let scale = 1;
-  const explosionInterval = setInterval(() => {
-    scale += 0.3;
-    explosion.scale.set(scale, scale, scale);
-    explosion.material.opacity = 1 - scale / 5;
-    if (scale >= 5) {
-      clearInterval(explosionInterval);
-      scene.remove(explosion);
-    }
-  }, 30);
 
   // Удаление из Ammo
   physicsWorld.removeRigidBody(body);
@@ -2277,6 +2261,72 @@ let pickupSpawnCooldown = 0;
 let pickupSpawnEnabled = false;
 const pickupTypes = ['explode', 'shield'];
 
+function createExplosionEffect(position) {
+  const explosionGroup = new THREE.Group();
+  explosionGroup.position.copy(position);
+
+  const colors = [0xffdd00, 0xff6600, 0xff0000];
+  const count = 10;
+
+  // Вспышка — икосаэдр
+  const flash = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.2, 0),
+    new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      transparent: true,
+      opacity: 0.8
+    })
+  );
+  explosionGroup.add(flash);
+
+  // Обломки / искры
+  for (let i = 0; i < count; i++) {
+    const geo = new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.2, 0);
+    const mat = new THREE.MeshBasicMaterial({
+      color: colors[Math.floor(Math.random() * colors.length)],
+      transparent: true,
+      opacity: 1.0
+    });
+    const piece = new THREE.Mesh(geo, mat);
+
+    const dir = new THREE.Vector3(
+      (Math.random() - 0.5) * 2,
+      Math.random() * 1.5,
+      (Math.random() - 0.5) * 2
+    ).normalize().multiplyScalar(3 + Math.random() * 2);
+
+    piece.userData.velocity = dir;
+    explosionGroup.add(piece);
+  }
+
+  scene.add(explosionGroup);
+
+  // Анимация
+  let timer = 0;
+  const duration = 1.0;
+  const animate = () => {
+    timer += 0.016;
+    const t = timer / duration;
+
+    flash.scale.setScalar(1 + t * 3);
+    flash.material.opacity = 0.8 * (1 - t);
+
+    explosionGroup.children.forEach(child => {
+      if (child === flash) return;
+      child.position.addScaledVector(child.userData.velocity, 0.016);
+      child.material.opacity = 1 - t;
+    });
+
+    if (timer < duration) {
+      requestAnimationFrame(animate);
+    } else {
+      scene.remove(explosionGroup);
+    }
+  };
+  animate();
+}
+
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -2289,7 +2339,7 @@ function animate() {
   if (currentMissionIndex >= missions.length) {
     currentMissionIndex = 0;
   } 
-  console.log({currentMissionIndex})
+
   const mission = missions[currentMissionIndex];
 if (mission && mission.check()) {
   mission.onComplete?.();
