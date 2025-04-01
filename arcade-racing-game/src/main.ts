@@ -2469,10 +2469,17 @@ setTimeout(() => {
 
   // Камера
   if (useFollowCamera) {
-    const offset = new THREE.Vector3(0, 12, 15).applyQuaternion(carMesh.quaternion);
-    const target = carMesh.position.clone().add(offset);
-    camera.position.lerp(target, 0.1);
-    camera.lookAt(carMesh.position);
+// Получаем только Y-поворот
+const euler = new THREE.Euler(0, 0, 0);
+euler.setFromQuaternion(carMesh.quaternion, 'YXZ');
+const yawOnlyQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, euler.y, 0));
+
+// Смещение назад и вверх (относительно направления машины, но только по горизонту)
+const offset = new THREE.Vector3(0, 12, 15).applyQuaternion(yawOnlyQuat);
+
+const target = carMesh.position.clone().add(offset);
+camera.position.lerp(target, 0.1);
+camera.lookAt(carMesh.position);
   } else {
     const targetPosition = carMesh.position.clone().add(new THREE.Vector3(0, 40, -40));
     camera.position.lerp(targetPosition, 0.05);
@@ -2494,7 +2501,7 @@ setTimeout(() => {
   if (!gameOver) {
     if (speed < 5) {
       stuckTimer += delta;
-      if (stuckTimer > 1) {
+      if (stuckTimer > 2) {
         gameOver = true;
         arrestMessage.innerText = 'Busted!';
         arrestMessage.style.display = 'block';
