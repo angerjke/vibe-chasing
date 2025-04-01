@@ -2249,7 +2249,10 @@ const missions = [
       interval = setInterval(() => {
         const pos = getRandomRoadPositionNearPlayer(60);
         if (pos) {
-          const type = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+          let type = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+          if (type === 'shield') {
+            type = 'explode'
+          }
           createPickup(pos, type);
         }
       }, 2000);
