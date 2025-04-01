@@ -2,8 +2,8 @@
 
 import * as THREE from 'three';
 import * as Ammo from 'ammo.js';
-import { initLevelEditor } from './edit';
 import { level } from './level';
+import {inject} from '@vercel/analytics';
 import { ParticleEmitter, ParticleSystem } from './ParticleSystem';
 const isMobileScreen = window.innerWidth < 600;
 
@@ -1577,6 +1577,7 @@ function generateBuildingsFromMap(map, scene) {
 let particleSystem
 let missionOverlay
 function init() {
+  inject({});
   fetchLeaderboard().then(data => {
     leaderboard = data;
   });
