@@ -1507,23 +1507,7 @@ function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
 }
 
 
-const hud = document.createElement('div');
-hud.style.position = 'absolute';
-hud.style.left = '20px';
-hud.style.bottom = '20px';
-hud.style.padding = '10px 15px';
-hud.style.borderRadius = '10px';
-hud.style.background = 'linear-gradient(135deg, rgba(255,0,150,0.6), rgba(28, 92, 92, 0.4))';
-hud.style.color = '#ffffff';
-hud.style.fontFamily = 'Orbitron, monospace';
-hud.style.fontSize = '18px';
-hud.style.pointerEvents = 'none';
-hud.style.userSelect = 'none';
-hud.style.webkitUserSelect = 'none';
-hud.style.touchAction = 'none';
-hud.style.webkitTouchCallout = 'none';
-hud.innerHTML = 'Speed: 0 km/h';
-document.body.appendChild(hud);
+
 let roadMeshes = []
 let obstacleMeshes = [];
 
@@ -1613,6 +1597,8 @@ function init() {
     leaderboard = data;
   });
   
+createHUD();
+
   missionOverlay = document.createElement('div');
   missionOverlay.innerHTML = `
   <div id="mission-text">🎯 Mission</div>
@@ -2526,14 +2512,13 @@ setTimeout(() => {
     }
   }
 
-  hud.innerHTML = `Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h `;
+  const hud = document.getElementById('game-hud');
   hud.innerHTML = `
-  Speed: ${speed < 2 ? '0' : speed.toFixed(0)} km/h<br>
-  Survived: ${survivalTime} s<br>
-  Distance: ${Math.floor(totalDistance)} m<br>
-
-  Alert Level: ${'🔥'.repeat(alertLevel)}
-`;
+    🚗 ${speed < 2 ? '0' : speed.toFixed(0)} KM/H<br>
+    ⏱ ${survivalTime}s<br>
+    📏 ${Math.floor(totalDistance)}m<br>
+    🕵️‍♂️ ALERT ${Array(alertLevel).fill('⭐').join('')}
+  `; 
   updatePoliceAI(delta);
   if (checkPlayerArrested()) {
     gameOver = true;
@@ -2688,9 +2673,29 @@ setTimeout(() => {
   //particleSystem.update(delta, scene);
 }
 
+function createHUD() {
+  const hud = document.createElement('div');
+  hud.id = 'game-hud';
+  Object.assign(hud.style, {
+    position: 'absolute',
+    left: isMobileScreen ? '12px' : '32px',
+    bottom: isMobileScreen ? '12px' : '22px',
+    color: '#ffffff',
+    fontFamily: '"Press Start 2P", Orbitron, monospace',
+    fontSize: isMobileScreen ? '12px' : '14px',
+    lineHeight: '1.5',
+    textShadow: '0 0 4px #000',
+    pointerEvents: 'none',
+    userSelect: 'none',
+    zIndex: 1000,
+  });
+  hud.innerHTML = `🚗 0 KM/H<br>⏱ 0s<br>📏 0m<br>⚠️ ALERT 🔥 x0`;
+  document.body.appendChild(hud);
+}
+
+
 init();
 animate();
-
 
 function explodeAllPoliceCars() {
   for (let i = policeCars.length - 1; i >= 0; i--) {
