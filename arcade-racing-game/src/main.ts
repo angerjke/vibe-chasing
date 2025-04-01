@@ -1321,7 +1321,7 @@ function checkPlayerArrested() {
 
 
     const distance = playerPos.distanceTo(policePos);
-    if (distance < 4 && getPlayerSpeedKmh() < 50) {
+    if (distance < 4 && getPlayerSpeedKmh() < 30) {
       arrCount++;
       if (arrCount > 2) {
         arrCount = 0;
@@ -1713,7 +1713,7 @@ document.body.appendChild(missionOverlay);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
-  createPickup([0, -30], 'shield');
+
 
   if (isMobile) {
     const leftZone = document.createElement('div');
@@ -2193,7 +2193,10 @@ const missions = [
     description: 'Explode 5 police cars',
     check: () => explodedPoliceCount >= 5,
     getProgress: () => ({ current: explodedPoliceCount, total: 5 }),
-    onComplete: () => {explodeAllPoliceCars()},
+    onComplete: () => {
+      explodedPoliceCount = 0
+      explodeAllPoliceCars()
+    },
     inited: false,
     init: () => {
       explodedPoliceCount = 0;
@@ -2235,6 +2238,7 @@ const missions = [
     onComplete: () => {
       explodeAllPoliceCars()
       clearInterval(interval)
+      explodedPoliceCount = 0;
     },
     getProgress: () => ({ current: explodedPoliceCount, total: 25 }),
     inited: false,
