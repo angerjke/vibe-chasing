@@ -2163,21 +2163,27 @@ else if (car.escapeState === 'escaping') {
 }
 let alert10StartTime = 0;
 let interval = null;
+let missionDistance = 0;
 const missions = [
   {
     icon: '📏',
     description: 'Drive 500 meters',
-    check: () => totalDistance >= 500,
-    onComplete: () => alertLevel += 1,
-    getProgress: () => ({ current: totalDistance, total: 500 }),
-    inited: false
+    check: () => missionDistance >= 500,
+    getProgress: () => ({ current: missionDistance, total: 500 }),
+    inited: false,
+    onComplete: () => {
+      missionDistance = 0
+    },
+    init: () => {
+      missionDistance = 0;
+    }
   },
   {
     icon: '⚡',
     description: 'Reach 180 km/h',
     check: () => getPlayerSpeedKmh() >= 180,
     onComplete: () => {
-      alertLevel += 1
+    
     },
     getProgress: () => ({ current: playerSpeed, total: 180 }),
     inited: false
@@ -2187,7 +2193,7 @@ const missions = [
     description: 'Explode 5 police cars',
     check: () => explodedPoliceCount >= 5,
     getProgress: () => ({ current: explodedPoliceCount, total: 5 }),
-    onComplete: () => {alertLevel += 3; explodeAllPoliceCars()},
+    onComplete: () => {explodeAllPoliceCars()},
     inited: false,
     init: () => {
       explodedPoliceCount = 0;
@@ -2287,6 +2293,10 @@ function animate() {
     collisionEffectTimer -= delta;
   }
 
+  if (currentMissionIndex >= missions.length) {
+    currentMissionIndex = 0;
+  } 
+  console.log({currentMissionIndex})
   const mission = missions[currentMissionIndex];
 if (mission && mission.check()) {
   mission.onComplete?.();
@@ -2298,6 +2308,7 @@ setTimeout(() => {
   missionCompleteBanner.style.transform = !isMobileScreen ? 'translate(-50%, -20%) scale(0.8)' : 'translate(-50%, -50%) scale(0.8)';
 }, 3000);
   currentMissionIndex++;
+  
   missionCompleteTime = performance.now();
   // Можно показать вспышку, звук, эмоции, повысить alertLevel
 }
@@ -2533,6 +2544,7 @@ setTimeout(() => {
     const currentPos = carMesh.position.clone();
     const frameDist = currentPos.distanceTo(lastCarPos);
     totalDistance += frameDist;
+    missionDistance += frameDist;
     lastCarPos.copy(currentPos);
   }
   const carX = carMesh.position.x;
