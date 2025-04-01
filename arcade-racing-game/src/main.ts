@@ -5,10 +5,74 @@ import * as Ammo from 'ammo.js';
 import { initLevelEditor } from './edit';
 import { level } from './level';
 import { ParticleEmitter, ParticleSystem } from './ParticleSystem';
+const isMobileScreen = window.innerWidth < 600;
+
+let isShieldActive = false;
+let shieldTimer = 0;
+let shieldVisual = null;
+
+const pickups = [];
+const activePickupEffects = [];
+
+function createPickup(position, type = 'boost') {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 16, 16),
+    new THREE.MeshStandardMaterial({
+      color: type === 'boost' ? 0x33ff33 : type === 'explode' ? 0xff3333 : 0x3399ff,
+      emissiveIntensity: 0.4,
+      emissive: 0x111111
+    })
+  );
+  mesh.position.set(position[0], 0.5, position[1]);
+
+  // Emoji Icon
+  const emojiMap = {
+    boost: '⚡',
+    explode: '💣',
+    shield: '🛡️'
+  };
+  const emoji = emojiMap[type] ?? '?';
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  ctx.font = '100px sans-serif';
+  ctx.imageSmoothingEnabled = true;
+  ctx.clearRect(0, 0, 512, 512);
+  ctx.font = '400px sans-serif'; // 🚀 жирно и чётко
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(emoji, 512 / 2, 512 / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+
+  const mat = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  const icon = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+  icon.position.set(0, 2, 0);
+  icon.userData.rotationSpeed = 0.8 + Math.random() * 0.6;
+  mesh.add(icon);
+  mesh.userData.iconMesh = icon;
+  mesh.userData.type = type;
+
+  scene.add(mesh);
+  pickups.push(mesh);
+}
+
+
 
 let stuckTimer = 0;
 let collisionEffectTimer = 0;
 let totalDistance = -55;
+let playerSpeed = 0
 let lastCarPos = new THREE.Vector3();
 let mobileStick = null;
 let mobileForce = { brake: 0, turn: 0 };
@@ -1210,7 +1274,9 @@ function createTrapezoidCabin(color = 0x444444) {
 }
 
 let alertLevel = 1;
-const maxAlertLevel = 122;
+let escapeCount = 0;
+let explodedPoliceCount = 0;
+const maxAlertLevel = 12;
 
 
 let scene, camera, renderer, clock, vehicle;
@@ -1305,6 +1371,8 @@ function explodePoliceCar(car) {
   // Удаление из массива
   const index = policeCars.indexOf(car);
   if (index !== -1) policeCars.splice(index, 1);
+
+  explodedPoliceCount++
 }
 
 function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
@@ -1417,6 +1485,8 @@ function spawnPoliceCar(scene, physicsWorld, playerMesh, roadMeshes = []) {
     addWheel(false, new Ammo.btVector3(wheelHalfTrack, wheelAxisHeight, -wheelBase));
 
     policeCars.push({
+      escapeState: 'none', // 'near' | 'escaping' | 'escaped'
+    escapeTimer: 0,
       stuckTimer: 0,
       crashed: false,
       crashTimer: 0,
@@ -1537,10 +1607,57 @@ function generateBuildingsFromMap(map, scene) {
   }
 }
 let particleSystem
+let missionOverlay
 function init() {
   fetchLeaderboard().then(data => {
     leaderboard = data;
   });
+  
+  missionOverlay = document.createElement('div');
+  missionOverlay.innerHTML = `
+  <div id="mission-text">🎯 Mission</div>
+  <div id="mission-progress-bar" style="
+    margin-top: 6px;
+    width: 100%;
+    height: 8px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    display: none;
+  ">
+    <div id="mission-progress" style="
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(to right, #ffcc00, #ff9900);
+      transition: width 0.3s ease;
+    "></div>
+  </div>
+`;
+Object.assign(missionOverlay.style, {
+  position: 'absolute',
+  top: '10px',
+  left: '50%',
+  
+  fontFamily: 'Orbitron, monospace',
+  fontSize: '20px',
+  color: '#fff',
+  background: 'rgba(0, 0, 0, 0.5)',
+  padding: '8px 16px',
+  borderRadius: '12px',
+  pointerEvents: 'none',
+  userSelect: 'none',
+  zIndex: '999',
+  maxWidth: '90vw',
+  opacity: 0,
+  transform: 'translateX(-50%) scale(0.9)',
+  transition: 'opacity 0.5s ease, transform 0.5s ease',
+  textAlign: 'center'
+});
+
+
+missionOverlay.style.fontSize = isMobileScreen ? '14px' : '20px';
+document.body.appendChild(missionOverlay);
+
 
   survivalTimerInterval = setInterval(() => {
     if (!gameOver) {
@@ -1548,13 +1665,18 @@ function init() {
     }
   }, 1000);
 
+  setTimeout(() => {
+    pickupSpawnEnabled = true;
+    pickupSpawnCooldown = 2; // чуть подождём перед первым спавном
+    console.log('✅ Boosters unlocked');
+  }, 10000); // 10 секунд
+
   const alertTimerSeconds = 20;
   // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xffcc99);
   scene.fog = new THREE.Fog(0xffcc99, 30, 250);
   particleSystem = new ParticleSystem();
-
 
   const zonePlane = new THREE.Mesh(
     new THREE.PlaneGeometry(cameraZone.xMax - cameraZone.xMin, cameraZone.zMax - cameraZone.zMin),
@@ -1592,6 +1714,7 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   document.body.appendChild(renderer.domElement);
+  createPickup([0, -30], 'shield');
 
   if (isMobile) {
     const leftZone = document.createElement('div');
@@ -1650,7 +1773,7 @@ function init() {
 
   setInterval(() => {
     if (!gameOver && alertLevel < maxAlertLevel) {
-      alertLevel++;
+      //alertLevel++;
       console.log(`ALERT LEVEL UP! Level = ${alertLevel}`);
 
       for (let car of policeCars) {
@@ -1661,7 +1784,7 @@ function init() {
   }, alertTimerSeconds * 1000);
 
   setInterval(() => {
-    for (let i = 0; i < alertLevel * 4; i++) {
+    for (let i = 0; i < alertLevel * 1; i++) {
       spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
     }
   }, 10 * 1000);
@@ -1764,10 +1887,6 @@ function init() {
   vehicle = new Ammo.btRaycastVehicle(tuning, carBody, rayCaster);
   vehicle.setCoordinateSystem(0, 1, 2);
   physicsWorld.addAction(vehicle);
-
-  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-  spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
 
   // Wheels
   const wheelRadius = 0.4;
@@ -1958,9 +2077,14 @@ function updatePoliceAI(delta) {
     let collided = false;
 
     // С игроком
-    if (carPos.distanceTo(carMesh.position) < 4) {
-      collided = true;
-      collisionEffectTimer = 2.0;
+    if (carPos.distanceTo(carMesh.position) < 8) {
+      console.log({ isShieldActive })
+      if (isShieldActive) {
+        explodePoliceCar(car);
+      } else {
+        collided = true;
+        collisionEffectTimer = 2.0;
+      }
     }
 
     // С другими полицейскими
@@ -1972,14 +2096,14 @@ function updatePoliceAI(delta) {
         other.crashed = true;
         car.crashTimer = 2.0;
         other.crashTimer = 2.0;
-      
+
         // Визуально: наклонить машину/встряхнуть
-        other.mesh.rotation.z = Math.random() * 0.2 - 0.1;
-      
+        other.mesh.rotation.z = Math.random() * 0.3 - 0.1;
+
         // Добавим дым
         //startSmokeEffectAt(car);
         //startSmokeEffectAt(other);
-      
+
         // Отключим управление и остановим
         vehicle.setBrake(1000, 0);
         vehicle.setBrake(1000, 1);
@@ -2005,12 +2129,155 @@ function updatePoliceAI(delta) {
       }
       continue; // пропускаем AI
     }
+
+    
+
+if (car.escapeState === 'none') {
+  if (distToPlayer < 20) {
+    car.escapeState = 'near';
   }
-  
 }
 
+else if (car.escapeState === 'near') {
+  if (distToPlayer > 25) {
+    car.escapeState = 'escaping';
+    car.escapeTimer = 0;
+  }
+}
+
+else if (car.escapeState === 'escaping') {
+  if (distToPlayer < 20) {
+    // Вернулся обратно
+    car.escapeState = 'near';
+    car.escapeTimer = 0;
+  } else {
+    car.escapeTimer += delta;
+    if (car.escapeTimer >= 1.0) {
+      car.escapeState = 'escaped';
+      escapeCount++;
+      console.log(`✅ Escaped! Total: ${escapeCount}`);
+    }
+  }
+}
+  }
+
+}
+let alert10StartTime = 0;
+let interval = null;
+const missions = [
+  {
+    icon: '📏',
+    description: 'Drive 500 meters',
+    check: () => totalDistance >= 500,
+    onComplete: () => alertLevel += 1,
+    getProgress: () => ({ current: totalDistance, total: 500 }),
+    inited: false
+  },
+  {
+    icon: '⚡',
+    description: 'Reach 180 km/h',
+    check: () => getPlayerSpeedKmh() >= 180,
+    onComplete: () => {
+      alertLevel += 1
+    },
+    getProgress: () => ({ current: playerSpeed, total: 180 }),
+    inited: false
+  },
+  {
+    icon: '💥',
+    description: 'Explode 5 police cars',
+    check: () => explodedPoliceCount >= 5,
+    getProgress: () => ({ current: explodedPoliceCount, total: 5 }),
+    onComplete: () => {alertLevel += 3; explodeAllPoliceCars()},
+    inited: false,
+    init: () => {
+      explodedPoliceCount = 0;
+      alertLevel = 3;
+    }
+  },
+  {
+    icon: '⏱️',
+    description: 'Survive 30s',
+    check: () => survivalTime - alert10StartTime >= 30,
+    getProgress: () => ({ current: survivalTime - alert10StartTime, total: 30 }),
+    onComplete: () => {
+      alertLevel = 0
+      explodeAllPoliceCars()
+    },
+    inited: false,
+    init: () => {
+      alert10StartTime = survivalTime;
+      alertLevel = 6;
+    }
+  },
+  {
+    icon: '⚡',
+    description: 'Reach 200 km/h',
+    check: () => getPlayerSpeedKmh() >= 200,
+    onComplete: () => {
+      
+    },
+    getProgress: () => ({ current: playerSpeed, total: 200 }),
+    inited: false,
+    init: () => {
+      alertLevel = 2;
+    }
+  },
+  {
+    icon: '💥',
+    description: 'Explode 25 police cars',
+    check: () => explodedPoliceCount >= 25,
+    onComplete: () => {
+      explodeAllPoliceCars()
+      clearInterval(interval)
+    },
+    getProgress: () => ({ current: explodedPoliceCount, total: 25 }),
+    inited: false,
+    init: () => {
+      explodeAllPoliceCars();
+      explodedPoliceCount = 0;
+      alertLevel = 5;
+      interval = setInterval(() => {
+        const pos = getRandomRoadPositionNearPlayer(60);
+        if (pos) {
+          const type = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+          createPickup(pos, type);
+        }
+      }, 2000);
+    }
+  },
+];
+
+let currentMissionIndex = 0;
+let missionCompleteTime = 0;
 
 
+
+function getRandomRoadPositionNearPlayer(radius = 40) {
+  const playerPos = carMesh.position.clone();
+  const candidates = [];
+
+  for (const tile of roadMeshes) {
+    const dx = tile.x - playerPos.x;
+    const dz = tile.z - playerPos.z;
+    const distSq = dx * dx + dz * dz;
+
+    if (distSq <= radius * radius) {
+      candidates.push(tile);
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+  const jitterX = (Math.random() - 0.5) * 4; // небольшое смещение
+  const jitterZ = (Math.random() - 0.5) * 4;
+  return [chosen.x + jitterX, chosen.z + jitterZ];
+}
+
+let pickupSpawnCooldown = 0;
+let pickupSpawnEnabled = false;
+const pickupTypes = ['explode', 'shield'];
 
 function animate() {
   requestAnimationFrame(animate);
@@ -2020,6 +2287,21 @@ function animate() {
   if (collisionEffectTimer > 0) {
     collisionEffectTimer -= delta;
   }
+
+  const mission = missions[currentMissionIndex];
+if (mission && mission.check()) {
+  mission.onComplete?.();
+  missionCompleteBanner.style.opacity = '1';
+  missionCompleteBanner.innerText = `${mission.icon ?? '🎯'} MISSION COMPLETE!`;
+  missionCompleteBanner.style.transform = !isMobileScreen ? 'translate(-50%, -20%) scale(1)' : 'translate(-50%, -50%) scale(1)';
+setTimeout(() => {
+  missionCompleteBanner.style.opacity = '0';
+  missionCompleteBanner.style.transform = !isMobileScreen ? 'translate(-50%, -20%) scale(0.8)' : 'translate(-50%, -50%) scale(0.8)';
+}, 3000);
+  currentMissionIndex++;
+  missionCompleteTime = performance.now();
+  // Можно показать вспышку, звук, эмоции, повысить alertLevel
+}
 
 
   // Improved idle stabilization
@@ -2072,7 +2354,7 @@ function animate() {
 
   if (!gameOver) {
 
-    engineForce = 5800;
+    engineForce = 4800;
     brakingForce = 0;
     if (keysPressed.backward) {
       engineForce = 200;
@@ -2093,16 +2375,78 @@ function animate() {
   let steerMod = 1.0;
   let forceMod = 1.0;
 
+  
+
   if (collisionEffectTimer > 0) {
     steerMod = 0.3; // руль вялый
     forceMod = 0.4; // тяга слабая
   }
+
+
+
+  let speedMultiplier = 1;
+
+  for (let i = activePickupEffects.length - 1; i >= 0; i--) {
+    const effect = activePickupEffects[i];
+    effect.timer -= delta;
+    if (effect.type === 'boost') speedMultiplier = 1.8;
+
+    if (effect.timer <= 0) activePickupEffects.splice(i, 1);
+
+    else if (effect.type === 'shield') {
+      isShieldActive = true;
+      shieldTimer = effect.timer;
+      
+    }
+  }
+  if (isShieldActive) {
+    shieldTimer -= delta;
+    if (shieldTimer <= 0) {
+      isShieldActive = false;
+      if (shieldVisual) {
+        carMesh.remove(shieldVisual);
+        shieldVisual = null;
+      }
+    } else {
+      if (!shieldVisual) {
+        shieldVisual = new THREE.Mesh(
+          new THREE.SphereGeometry(2.5, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0x33ccff, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
+        );
+        shieldVisual.userData.remainingTime = 10; // секунд
+        shieldVisual.userData.isShield = true;
+
+        carMesh.add(shieldVisual);
+      }
+      shieldVisual.rotation.y += delta * 2;
+    }
+  }
+  engineForce *= forceMod * speedMultiplier;
+
   vehicle.applyEngineForce(engineForce, 2);
   vehicle.applyEngineForce(engineForce, 3);
   vehicle.setBrake(brakingForce, 2);
   vehicle.setBrake(brakingForce, 3);
   vehicle.setSteeringValue(steering, 0);
   vehicle.setSteeringValue(steering, 1);
+
+  for (const child of carMesh.children) {
+    if (child.userData.isShield) {
+      child.userData.remainingTime -= delta;
+      console.log(child.userData.remainingTime)
+      if (child.userData.remainingTime <= 0) {
+        carMesh.remove(child);
+      }
+      else if (child.userData.remainingTime <= 2) {
+        // Мигание
+        const t = child.userData.remainingTime;
+        const blink = Math.sin((2 - t) * 15); // чем ближе к 0, тем чаще
+        child.visible = blink > 0;
+      } else {
+        child.visible = true;
+      }
+    }
+  }
 
 
   const tm = vehicle.getRigidBody().getMotionState();
@@ -2139,16 +2483,10 @@ function animate() {
     light.material.emissive.setHex(keysPressed.backward ? 0xff0000 : 0x000000);
   }
 
- 
-
-  if (policeCars.length < 3) {
-    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-    spawnPoliceCar(scene, physicsWorld, carMesh, roadMeshes);
-  }
   // HUD
   const linVel = carBody.getLinearVelocity();
   const speed = linVel.length() * 3.6; // m/s в km/h
+  playerSpeed = speed;
 
   if (!gameOver) {
     if (speed < 5) {
@@ -2206,6 +2544,128 @@ function animate() {
     carZ >= cameraZone.zMin && carZ <= cameraZone.zMax;
 
   useFollowCamera = isInCamZone;
+
+
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const pickup = pickups[i];
+    const dist = pickup.position.distanceTo(carMesh.position);
+    if (dist < 2.5) {
+      // Собрали
+      const type = pickup.userData.type;
+      if (type === 'boost') {
+        activePickupEffects.push({ type: 'boost', timer: 5.0 }); // 5 секунд ускорения
+      }
+      else if (type === 'shield') {
+        for (const child of carMesh.children) {
+          if (child.userData.isShield) carMesh.remove(child);
+        }
+        activePickupEffects.push({ type: 'shield', timer: 10.0 }); 
+      }
+
+      else if (type === 'explode') {
+        const explosionOrigin = carMesh.position.clone();
+
+        for (let i = policeCars.length - 1; i >= 0; i--) {
+          const cop = policeCars[i];
+          const dist = explosionOrigin.distanceTo(cop.mesh.position);
+          if (dist < 200) {
+            explodePoliceCar(cop);
+          }
+        }
+
+        // Визуальная вспышка
+        const flash = new THREE.Mesh(
+          new THREE.SphereGeometry(2, 32, 32),
+          new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.6 })
+        );
+        flash.position.copy(explosionOrigin);
+        scene.add(flash);
+        setTimeout(() => scene.remove(flash), 400);
+      }
+
+      scene.remove(pickup);
+      pickups.splice(i, 1);
+
+      // Визуальный эффект сбора
+      const flash = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffff00 })
+      );
+      flash.position.copy(carMesh.position);
+      scene.add(flash);
+      setTimeout(() => scene.remove(flash), 500);
+    }
+  }
+
+
+  pickupSpawnCooldown -= delta;
+
+  if (pickupSpawnEnabled) {
+    pickupSpawnCooldown -= delta;
+
+    if (pickupSpawnCooldown <= 0 && activePickupEffects.length === 0) {
+      for (const p of pickups) scene.remove(p);
+      pickups.length = 0;
+
+      const pos = getRandomRoadPositionNearPlayer(60);
+      if (pos) {
+        const type = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+        createPickup(pos, type);
+      }
+
+      pickupSpawnCooldown = 20;
+    }
+  }
+
+
+  for (const p of pickups) {
+    const icon = p.userData.iconMesh;
+    if (icon) {
+      icon.rotation.y += delta * icon.userData.rotationSpeed;
+      icon.position.y = 2 + Math.sin(performance.now() / 300 + p.position.x) * 0.1;
+    }
+  }
+  if (!gameOver && missions[currentMissionIndex]) {
+    const ms = missions[currentMissionIndex];
+    if (!ms.inited) {
+      ms.inited = true;
+      ms.init?.();
+    }
+  
+    const missionText = document.getElementById('mission-text');
+    const barWrapper = document.getElementById('mission-progress-bar');
+    const bar = document.getElementById('mission-progress');
+  
+    let progressStr = '';
+    let progressPercent = 0;
+  
+    // Расчёт прогресса, если доступен
+    if (ms.getProgress) {
+      const { current, total } = ms.getProgress();
+      progressStr = ` (${Math.floor(current)} / ${total})`;
+      progressPercent = Math.min(current / total, 1);
+      barWrapper.style.display = 'block';
+      bar.style.width = `${progressPercent * 100}%`;
+    } else {
+      barWrapper.style.display = 'none';
+    }
+  
+    // Текст + возможно вспышка завершения
+    let text = `${ms.icon ?? '🎯'} ${ms.description}${progressStr}`;
+    if (performance.now() - missionCompleteTime < 3000) {
+      missionOverlay.style.opacity = '1';
+      missionOverlay.style.transform = 'translateX(-50%) scale(1.1)';
+    } else {
+      missionOverlay.style.opacity = '1';
+      missionOverlay.style.transform = 'translateX(-50%) scale(1)';
+    }
+  
+    missionText.innerHTML = text;
+  } else {
+    missionOverlay.style.opacity = '0';
+    missionOverlay.style.transform = 'translateX(-50%) scale(0.9)';
+  }
+
   renderer.render(scene, camera);
   //particleSystem.update(delta, scene);
 }
@@ -2214,7 +2674,12 @@ init();
 animate();
 
 
-
+function explodeAllPoliceCars() {
+  for (let i = policeCars.length - 1; i >= 0; i--) {
+    const cop = policeCars[i];
+    explodePoliceCar(cop);
+  }
+}
 
 const leaderboardOverlay = document.createElement('div');
 leaderboardOverlay.innerHTML = `
@@ -2243,6 +2708,30 @@ Object.assign(leaderboardOverlay.style, {
   fontFamily: 'Orbitron, monospace'
 });
 document.body.appendChild(leaderboardOverlay);
+
+const missionCompleteBanner = document.createElement('div');
+missionCompleteBanner.innerText = '✔ MISSION COMPLETE!';
+Object.assign(missionCompleteBanner.style, {
+  position: 'absolute',
+  top: isMobileScreen ? '30%' : '10%',
+  left: '50%',
+  transform: 'translate(-50%, -10%) scale(0.8)',
+  padding: '20px 40px',
+  background: 'rgba(0, 0, 0, 0.75)',
+  color: '#ffcc00',
+  fontSize: '32px',
+  fontFamily: 'Orbitron, monospace',
+  fontWeight: 'bold',
+  borderRadius: '16px',
+  opacity: '0',
+  zIndex: '9999',
+  pointerEvents: 'none',
+  transition: 'opacity 0.5s ease, transform 0.5s ease'
+});
+document.body.appendChild(missionCompleteBanner);
+missionCompleteBanner.style.fontSize = isMobileScreen ? '14px' : '20px';
+missionCompleteBanner.style.padding = isMobileScreen ? '10px 10px' : '20px 40px';
+
 
 const restartBtn = leaderboardOverlay.querySelector('#restart-game');
 Object.assign(restartBtn.style, {
@@ -2316,7 +2805,7 @@ function showGameOverOverlay(finalTime, finalDistance) {
   specialMessage.style.color = '#ffcc00';
   specialMessage.style.fontWeight = 'bold';
 
-const nameInput = leaderboardOverlay.querySelector('#player-name');
+  const nameInput = leaderboardOverlay.querySelector('#player-name');
   const submitBtn = leaderboardOverlay.querySelector('#submit-score');
   const leaderboardList = leaderboardOverlay.querySelector('#leaderboard-list');
 
