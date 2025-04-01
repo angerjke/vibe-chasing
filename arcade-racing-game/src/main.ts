@@ -2134,6 +2134,7 @@ else if (car.escapeState === 'escaping') {
 let alert10StartTime = 0;
 let interval = null;
 let missionDistance = 0;
+let diff = 0
 const missions = [
   {
     icon: '📏',
@@ -2155,6 +2156,9 @@ const missions = [
     onComplete: () => {
     
     },
+    init: () => {
+      alertLevel = 1+diff;
+    },
     getProgress: () => ({ current: playerSpeed, total: 180 }),
     inited: false
   },
@@ -2164,13 +2168,12 @@ const missions = [
     check: () => explodedPoliceCount >= 5,
     getProgress: () => ({ current: explodedPoliceCount, total: 5 }),
     onComplete: () => {
-      explodedPoliceCount = 0
       explodeAllPoliceCars()
     },
     inited: false,
     init: () => {
       explodedPoliceCount = 0;
-      alertLevel = 3;
+      alertLevel = 3+diff;
     }
   },
   {
@@ -2179,13 +2182,14 @@ const missions = [
     check: () => survivalTime - alert10StartTime >= 30,
     getProgress: () => ({ current: survivalTime - alert10StartTime, total: 30 }),
     onComplete: () => {
-      alertLevel = 0
       explodeAllPoliceCars()
+      alert10StartTime = 0;
+
     },
     inited: false,
     init: () => {
       alert10StartTime = survivalTime;
-      alertLevel = 6;
+      alertLevel = 6+diff;
     }
   },
   {
@@ -2198,7 +2202,7 @@ const missions = [
     getProgress: () => ({ current: playerSpeed, total: 200 }),
     inited: false,
     init: () => {
-      alertLevel = 2;
+      alertLevel = 2+diff;
     }
   },
   {
@@ -2215,7 +2219,7 @@ const missions = [
     init: () => {
       explodeAllPoliceCars();
       explodedPoliceCount = 0;
-      alertLevel = 5;
+      alertLevel = 5+diff;
       interval = setInterval(() => {
         const pos = getRandomRoadPositionNearPlayer(60);
         if (pos) {
@@ -2338,11 +2342,13 @@ function animate() {
 
   if (currentMissionIndex >= missions.length) {
     currentMissionIndex = 0;
+    diff++;
   } 
 
   const mission = missions[currentMissionIndex];
 if (mission && mission.check()) {
   mission.onComplete?.();
+  mission.inited = false;
   missionCompleteBanner.style.opacity = '1';
   missionCompleteBanner.innerText = `${mission.icon ?? '🎯'} MISSION COMPLETE!`;
   missionCompleteBanner.style.transform = !isMobileScreen ? 'translate(-50%, -20%) scale(1)' : 'translate(-50%, -50%) scale(1)';
@@ -2759,6 +2765,7 @@ function explodeAllPoliceCars() {
     const cop = policeCars[i];
     explodePoliceCar(cop);
   }
+  explodedPoliceCount = 0
 }
 
 const leaderboardOverlay = document.createElement('div');
