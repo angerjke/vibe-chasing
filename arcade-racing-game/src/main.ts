@@ -1668,7 +1668,6 @@ document.body.appendChild(missionOverlay);
   setTimeout(() => {
     pickupSpawnEnabled = true;
     pickupSpawnCooldown = 2; // чуть подождём перед первым спавном
-    console.log('✅ Boosters unlocked');
   }, 10000); // 10 секунд
 
   const alertTimerSeconds = 20;
@@ -1774,7 +1773,7 @@ document.body.appendChild(missionOverlay);
   setInterval(() => {
     if (!gameOver && alertLevel < maxAlertLevel) {
       //alertLevel++;
-      console.log(`ALERT LEVEL UP! Level = ${alertLevel}`);
+      
 
       for (let car of policeCars) {
         car.maxSpeed += 4 * alertLevel;
@@ -2078,7 +2077,7 @@ function updatePoliceAI(delta) {
 
     // С игроком
     if (carPos.distanceTo(carMesh.position) < 8) {
-      console.log({ isShieldActive })
+      
       if (isShieldActive) {
         explodePoliceCar(car);
       } else {
@@ -2155,7 +2154,7 @@ else if (car.escapeState === 'escaping') {
     if (car.escapeTimer >= 1.0) {
       car.escapeState = 'escaped';
       escapeCount++;
-      console.log(`✅ Escaped! Total: ${escapeCount}`);
+      
     }
   }
 }
@@ -2433,7 +2432,7 @@ setTimeout(() => {
   for (const child of carMesh.children) {
     if (child.userData.isShield) {
       child.userData.remainingTime -= delta;
-      console.log(child.userData.remainingTime)
+
       if (child.userData.remainingTime <= 0) {
         carMesh.remove(child);
       }
